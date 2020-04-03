@@ -97,6 +97,7 @@ static bool read_dt_fstab(cmdline *cmd, const char *name) {
 	if ((fd = open(path, O_RDONLY | O_CLOEXEC)) >= 0) {
 		read(fd, path, sizeof(path));
 		close(fd);
+		path[strcspn(path, "\r\n")] = '\0';
 		// Some custom treble use different names, so use what we read
 		char *part = rtrim(strrchr(path, '/') + 1);
 		sprintf(partname, "%s%s", part, strend(part, cmd->slot) ? cmd->slot : "");
@@ -104,6 +105,7 @@ static bool read_dt_fstab(cmdline *cmd, const char *name) {
 		if ((fd = xopen(path, O_RDONLY | O_CLOEXEC)) >= 0) {
 			read(fd, fstype, 32);
 			close(fd);
+			fstype[strcspn(fstype, "\r\n")] = '\0';
 			return true;
 		}
 	}
@@ -121,6 +123,7 @@ if (!is_lnk("/" #name) && read_dt_fstab(cmd, #name)) { \
 
 static void switch_root(const string &path) {
 	LOGD("Switch root to %s\n", path.data());
+	int root = xopen("/", O_RDONLY);
 	vector<string> mounts;
 	parse_mnt("/proc/mounts", [&](mntent *me) {
 		// Skip root and self
@@ -142,6 +145,9 @@ static void switch_root(const string &path) {
 	chdir(path.data());
 	xmount(path.data(), "/", nullptr, MS_MOVE, nullptr);
 	chroot(".");
+
+	LOGD("Cleaning rootfs\n");
+	frm_rf(root);
 }
 
 static void mount_persist(const char *dev_base, const char *mnt_base) {
@@ -218,11 +224,6 @@ void SARInit::early_mount() {
 	mount_list.emplace_back("/dev");
 
 	backup_files();
-
-	LOGD("Cleaning rootfs\n");
-	int root = xopen("/", O_RDONLY | O_CLOEXEC);
-	frm_rf(root, { "proc", "sys", "dev" });
-	close(root);
 
 	mount_system_root();
 	switch_root("/system_root");
