@@ -24,10 +24,8 @@
 
 using namespace std;
 
-constexpr const char *init_applet[] =
-		{ "magiskpolicy", "supolicy", "magisk", nullptr };
 constexpr int (*init_applet_main[])(int, char *[]) =
-		{ magiskpolicy_main, magiskpolicy_main, magisk_proxy_main, nullptr };
+		{ magiskpolicy_main, magiskpolicy_main, nullptr };
 
 #ifdef MAGISK_DEBUG
 static FILE *kmsg;
@@ -187,8 +185,11 @@ public:
 int main(int argc, char *argv[]) {
 	umask(0);
 
+	auto name = basename(argv[0]);
+	if (name == "magisk"sv)
+		return magisk_proxy_main(argc, argv);
 	for (int i = 0; init_applet[i]; ++i) {
-		if (strcmp(basename(argv[0]), init_applet[i]) == 0)
+		if (strcmp(name, init_applet[i]) == 0)
 			return (*init_applet_main[i])(argc, argv);
 	}
 
@@ -208,30 +209,31 @@ int main(int argc, char *argv[]) {
 		return 1;
 	setup_klog();
 
-	unique_ptr<BaseInit> init;
+	BaseInit *init;
 	cmdline cmd{};
 
 	if (argc > 1 && argv[1] == "selinux_setup"sv) {
-		init = make_unique<SecondStageInit>(argv);
+		init = new SecondStageInit(argv);
 	} else {
 		// This will also mount /sys and /proc
 		load_kernel_info(&cmd);
 
-		if (access("/apex", F_OK) == 0) {
-			if (cmd.force_normal_boot)
-				init = make_unique<ForcedFirstStageInit>(argv, &cmd);
-			else if (cmd.skip_initramfs)
-				init = make_unique<SARFirstStageInit>(argv, &cmd);
+		bool two_stage = access("/apex", F_OK) == 0;
+		if (cmd.skip_initramfs) {
+			if (two_stage)
+				init = new SARFirstStageInit(argv, &cmd);
 			else
-				init = make_unique<FirstStageInit>(argv, &cmd);
-		} else if (cmd.skip_initramfs) {
-			init = make_unique<SARInit>(argv, &cmd);
+				init = new SARInit(argv, &cmd);
 		} else {
 			decompress_ramdisk();
-			if (access("/sbin/recovery", F_OK) == 0 || access("/system/bin/recovery", F_OK) == 0)
-				init = make_unique<RecoveryInit>(argv, &cmd);
+			if (cmd.force_normal_boot)
+				init = new FirstStageInit(argv, &cmd);
+			else if (access("/sbin/recovery", F_OK) == 0 || access("/system/bin/recovery", F_OK) == 0)
+				init = new RecoveryInit(argv, &cmd);
+			else if (two_stage)
+				init = new FirstStageInit(argv, &cmd);
 			else
-				init = make_unique<RootFSInit>(argv, &cmd);
+				init = new RootFSInit(argv, &cmd);
 		}
 	}
 

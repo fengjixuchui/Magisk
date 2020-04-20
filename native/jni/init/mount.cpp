@@ -153,11 +153,13 @@ static void switch_root(const string &path) {
 static void mount_persist(const char *dev_base, const char *mnt_base) {
 	string mnt_point = mnt_base + "/persist"s;
 	strcpy(partname, "persist");
-	sprintf(block_dev, "%s/persist", dev_base);
+	xrealpath(dev_base, block_dev);
+	char *s = block_dev + strlen(block_dev);
+	strcpy(s, "/persist");
 	if (setup_block(false) < 0) {
 		// Fallback to cache
 		strcpy(partname, "cache");
-		sprintf(block_dev, "%s/cache", dev_base);
+		strcpy(s, "/cache");
 		if (setup_block(false) < 0) {
 			// Try NVIDIA's BS
 			strcpy(partname, "CAC");
@@ -193,7 +195,8 @@ void SARBase::backup_files() {
 		backup_folder("/overlay.d", overlays);
 
 	full_read("/proc/self/exe", self.buf, self.sz);
-	full_read("/.backup/.magisk", config.buf, config.sz);
+	if (access("/.backup/.magisk", R_OK) == 0)
+		full_read("/.backup/.magisk", config.buf, config.sz);
 }
 
 void SARBase::mount_system_root() {
@@ -240,11 +243,9 @@ void SARFirstStageInit::early_mount() {
 
 void SecondStageInit::early_mount() {
 	backup_files();
-	rm_rf("/system");
-	rm_rf("/.backup");
-	rm_rf("/overlay.d");
 
-	umount2("/system/bin/init", MNT_DETACH);
+	umount2("/init", MNT_DETACH);
+	umount2("/proc/self/exe", MNT_DETACH);
 
 	if (access("/system_root", F_OK) == 0)
 		switch_root("/system_root");

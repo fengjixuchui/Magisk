@@ -31,9 +31,9 @@ struct raw_data {
 	}
 };
 
-/* *************
+/***************
  * Base classes
- * *************/
+ ***************/
 
 class BaseInit {
 protected:
@@ -41,9 +41,9 @@ protected:
 	char **argv;
 	std::vector<std::string> mount_list;
 
-	void exec_init(const char *init = "/init") {
+	void exec_init() {
 		cleanup();
-		execv(init, argv);
+		execv("/init", argv);
 		exit(1);
 	}
 	virtual void cleanup();
@@ -60,7 +60,7 @@ protected:
 	std::string persist_dir;
 
 	virtual void early_mount() = 0;
-	bool patch_sepolicy(const char *file = "/sepolicy");
+	bool patch_sepolicy(const char *file);
 public:
 	MagiskInit(char *argv[], cmdline *cmd) : BaseInit(argv, cmd) {}
 };
@@ -69,7 +69,6 @@ class SARBase : public MagiskInit {
 protected:
 	raw_data config;
 	std::vector<raw_file> overlays;
-	std::string tmp_dir;
 
 	void backup_files();
 	void patch_rootdir();
@@ -83,22 +82,9 @@ public:
 	}
 };
 
-/* *************
+/***************
  * 2 Stage Init
- * *************/
-
-class ForcedFirstStageInit : public BaseInit {
-private:
-	void prepare();
-public:
-	ForcedFirstStageInit(char *argv[], cmdline *cmd) : BaseInit(argv, cmd) {
-		LOGD("%s\n", __FUNCTION__);
-	};
-	void start() override {
-		prepare();
-		exec_init("/system/bin/init");
-	}
-};
+ ***************/
 
 class FirstStageInit : public BaseInit {
 private:
@@ -115,7 +101,7 @@ public:
 
 class SARFirstStageInit : public SARBase {
 private:
-	void traced_exec_init();
+	void prepare();
 protected:
 	void early_mount() override;
 public:
@@ -124,7 +110,8 @@ public:
 	};
 	void start() override {
 		early_mount();
-		traced_exec_init();
+		prepare();
+		exec_init();
 	}
 };
 
@@ -138,9 +125,9 @@ public:
 	};
 };
 
-/* ***********
+/*************
  * Legacy SAR
- * ***********/
+ *************/
 
 class SARInit : public SARBase {
 protected:
@@ -151,9 +138,9 @@ public:
 	};
 };
 
-/* **********
+/************
  * Initramfs
- * **********/
+ ************/
 
 class RootFSInit : public MagiskInit {
 private:
