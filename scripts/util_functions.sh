@@ -234,7 +234,7 @@ mount_partitions() {
 
   # Mount ro partitions
   mount_ro_ensure "system$SLOT app$SLOT" /system
-  if [ -f /system/init.rc ]; then
+  if [ -f /system/init -o -L /system/init ]; then
     SYSTEM_ROOT=true
     setup_mntpoint /system_root
     if ! mount --move /system /system_root; then
@@ -438,8 +438,10 @@ install_magisk() {
     BOOTIMAGE=boot.img
   fi
 
-  eval $BOOTSIGNER -verify < $BOOTIMAGE && BOOTSIGNED=true
-  $BOOTSIGNED && ui_print "- Boot image is signed with AVB 1.0"
+  if [ $API -ge 21 ]; then
+    eval $BOOTSIGNER -verify < $BOOTIMAGE && BOOTSIGNED=true
+    $BOOTSIGNED && ui_print "- Boot image is signed with AVB 1.0"
+  fi
 
   $IS64BIT && mv -f magiskinit64 magiskinit 2>/dev/null || rm -f magiskinit64
 
