@@ -48,9 +48,6 @@ open class SplashActivity : Activity() {
         Utils.scheduleUpdateCheck(this)
         Shortcuts.setup(this)
 
-        // Patch DTB partitions if needed
-        patchDTB(this)
-
         // Pre-fetch network stuffs
         get<GithubRawServices>()
 

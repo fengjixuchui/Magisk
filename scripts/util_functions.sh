@@ -260,7 +260,8 @@ mount_partitions() {
     grep ' / ' /proc/mounts | grep -qv 'rootfs' || grep -q ' /system_root ' /proc/mounts \
     && SYSTEM_ROOT=true || SYSTEM_ROOT=false
   fi
-  [ -L /system/vendor ] && mount_ro_ensure vendor$SLOT /vendor
+  # /vendor is used only on some older devices for recovery AVBv1 signing so is not critical if fails
+  [ -L /system/vendor ] && mount_name vendor$SLOT /vendor '-o ro'
   $SYSTEM_ROOT && ui_print "- Device is system-as-root"
 
   # Allow /system/bin commands (dalvikvm) on Android 10+ in recovery
@@ -419,27 +420,6 @@ flash_image() {
   return 0
 }
 
-patch_dtb_partitions() {
-  local result=1
-  cd $MAGISKBIN
-  for name in dtb dtbo dtbs; do
-    local IMAGE=`find_block $name$SLOT`
-    if [ ! -z $IMAGE ]; then
-      ui_print "- $name image: $IMAGE"
-      if ./magiskboot dtb $IMAGE patch dt.patched; then
-        result=0
-        ui_print "- Backing up stock $name image"
-        cat $IMAGE > stock_${name}.img
-        ui_print "- Flashing patched $name"
-        cat dt.patched /dev/zero > $IMAGE
-        rm -f dt.patched
-      fi
-    fi
-  done
-  cd /
-  return $result
-}
-
 # Common installation script for flash_script.sh and addon.d.sh
 install_magisk() {
   cd $MAGISKBIN
@@ -477,7 +457,6 @@ install_magisk() {
   ./magiskboot cleanup
   rm -f new-boot.img
 
-  patch_dtb_partitions
   run_migrations
 }
 
@@ -727,9 +706,11 @@ install_module() {
   # Copy over custom sepolicy rules
   if [ -f $MODPATH/sepolicy.rule -a -e "$PERSISTDIR" ]; then
     ui_print "- Installing custom sepolicy patch"
+    # Remove old recovery logs (which may be filling partition) to make room
+    rm -f $PERSISTDIR/cache/recovery/*
     PERSISTMOD=$PERSISTDIR/magisk/$MODID
     mkdir -p $PERSISTMOD
-    cp -af $MODPATH/sepolicy.rule $PERSISTMOD/sepolicy.rule
+    cp -af $MODPATH/sepolicy.rule $PERSISTMOD/sepolicy.rule || abort "! Insufficient partition size"
   fi
 
   # Remove stuffs that don't belong to modules
