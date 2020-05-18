@@ -19,7 +19,7 @@
 
 using namespace std;
 
-bool pfs_done = false;
+static bool pfs_done = false;
 static bool no_secure_dir = false;
 static bool safe_mode = false;
 
@@ -146,28 +146,27 @@ void reboot() {
 
 static bool check_data() {
 	bool mnt = false;
-	bool data = false;
-	file_readline("/proc/mounts", [&](string_view s) -> bool {
-		if (str_contains(s, " /data ") && !str_contains(s, "tmpfs"))
+	file_readline("/proc/mounts", [&](string_view s) {
+		if (str_contains(s, " /data ") && !str_contains(s, "tmpfs")) {
 			mnt = true;
+			return false;
+		}
 		return true;
 	});
-	if (mnt) {
-		auto crypto = getprop("ro.crypto.state");
-		if (!crypto.empty()) {
-			if (crypto == "unencrypted") {
-				// Unencrypted, we can directly access data
-				data = true;
-			} else {
-				// Encrypted, check whether vold is started
-				data = !getprop("init.svc.vold").empty();
-			}
+	if (!mnt)
+		return false;
+	auto crypto = getprop("ro.crypto.state");
+	if (!crypto.empty()) {
+		if (crypto == "unencrypted") {
+			// Unencrypted, we can directly access data
+			return true;
 		} else {
-			// ro.crypto.state is not set, assume it's unencrypted
-			data = true;
+			// Encrypted, check whether vold is started
+			return !getprop("init.svc.vold").empty();
 		}
 	}
-	return data;
+	// ro.crypto.state is not set, assume it's unencrypted
+	return true;
 }
 
 void unlock_blocks() {
@@ -269,8 +268,7 @@ void post_fs_data(int client) {
 		foreach_modules("disable");
 		stop_magiskhide();
 	} else {
-		LOGI("* Running post-fs-data.d scripts\n");
-		exec_common_script("post-fs-data");
+		exec_common_scripts("post-fs-data");
 		auto_start_magiskhide();
 		handle_modules();
 	}
@@ -300,15 +298,8 @@ void late_start(int client) {
 	if (!pfs_done || safe_mode)
 		return;
 
-	LOGI("* Running service.d scripts\n");
-	exec_common_script("service");
-
-	LOGI("* Running module service scripts\n");
-	exec_module_script("service", module_list);
-
-	// All boot stage done, cleanup
-	module_list.clear();
-	module_list.shrink_to_fit();
+	exec_common_scripts("service");
+	exec_module_scripts("service");
 }
 
 void boot_complete(int client) {
