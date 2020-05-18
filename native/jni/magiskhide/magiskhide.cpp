@@ -16,8 +16,6 @@
 
 using namespace std::literals;
 
-bool hide_enabled = false;
-
 [[noreturn]] static void usage(char *arg0) {
 	fprintf(stderr,
 		NAME_WITH_VER(MagiskHide) "\n\n"
@@ -47,7 +45,7 @@ void magiskhide_handler(int client) {
 	case ADD_HIDELIST:
 	case RM_HIDELIST:
 	case LS_HIDELIST:
-		if (!hide_enabled) {
+		if (!hide_enabled()) {
 			write_int(client, HIDE_NOT_ENABLED);
 			close(client);
 			return;
@@ -56,8 +54,8 @@ void magiskhide_handler(int client) {
 
 	switch (req) {
 	case LAUNCH_MAGISKHIDE:
-		launch_magiskhide(client);
-		return;
+		res = launch_magiskhide();
+		break;
 	case STOP_MAGISKHIDE:
 		res = stop_magiskhide();
 		break;
@@ -69,10 +67,9 @@ void magiskhide_handler(int client) {
 		break;
 	case LS_HIDELIST:
 		ls_list(client);
-		client = -1;
-		break;
+		return;
 	case HIDE_STATUS:
-		res = hide_enabled ? HIDE_IS_ENABLED : HIDE_NOT_ENABLED;
+		res = hide_enabled() ? HIDE_IS_ENABLED : HIDE_NOT_ENABLED;
 		break;
 	}
 
