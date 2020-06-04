@@ -55,8 +55,8 @@ arch64 = ['arm64-v8a', 'x86_64']
 support_targets = ['magisk', 'magiskinit', 'magiskboot', 'magiskpolicy', 'resetprop', 'busybox', 'test']
 default_targets = ['magisk', 'magiskinit', 'magiskboot', 'busybox']
 
-ndk_ver = '21'
-ndk_ver_full = '21.0.6113669'
+ndk_ver = '21c'
+ndk_ver_full = '21.2.6472646'
 build_tools_ver = '29.0.3'
 
 ndk_root = op.join(os.environ['ANDROID_HOME'], 'ndk')
@@ -299,7 +299,7 @@ def build_binary(args):
 
     header('* Building binaries: ' + ' '.join(args.target))
 
-    os.utime(op.join('native', 'jni', 'include', 'flags.h'))
+    os.utime(op.join('native', 'jni', 'include', 'flags.hpp'))
 
     # Basic flags
     global base_flags
@@ -560,10 +560,11 @@ def setup_ndk(args):
     rm_rf(op.join(ndk_path, 'sysroot'))
 
     header('* Replacing API-16 static libs')
-    for arch in ['arm', 'i686']:
+    for target in ['arm-linux-androideabi', 'i686-linux-android']:
+      arch = target.split('-')[0]
       lib_dir = op.join(
         ndk_path, 'toolchains', 'llvm', 'prebuilt', f'{os_name}-x86_64',
-        'sysroot', 'usr', 'lib', f'{arch}-linux-androideabi', '16')
+        'sysroot', 'usr', 'lib', f'{target}', '16')
       src_dir = op.join('tools', 'ndk-bins', arch)
       # Remove stupid macOS crap
       rm(op.join(src_dir, '.DS_Store'))
@@ -574,7 +575,7 @@ def setup_ndk(args):
     src_prop = op.join(ndk_path, 'source.properties')
     props = parse_props(src_prop)
     props['Pkg.Revision.orig'] = props['Pkg.Revision']
-    props['Pkg.Revision'] = '0.0.0'
+    props['Pkg.Revision'] = '99.99.99'
     with open(src_prop, 'w') as p:
         for key, val in props.items():
             print(f'{key} = {val}', file=p)
