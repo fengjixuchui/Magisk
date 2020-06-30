@@ -57,7 +57,7 @@ default_targets = ['magisk', 'magiskinit', 'magiskboot', 'busybox']
 
 ndk_ver = '21c'
 ndk_ver_full = '21.2.6472646'
-build_tools_ver = '29.0.3'
+build_tools_ver = '30.0.0'
 
 ndk_root = op.join(os.environ['ANDROID_HOME'], 'ndk')
 ndk_path = op.join(ndk_root, 'magisk')
@@ -355,8 +355,8 @@ def build_apk(args, module):
                 tmp = f.name
 
             # AAPT2 optimization
-            execv([aapt2, 'optimize', '-o', tmp, '--enable-resource-obfuscation',
-                  '--enable-resource-path-shortening', source])
+            execv([aapt2, 'optimize', '-o', tmp, '--collapse-resource-names',
+                  '--shorten-resource-paths', source])
 
             # Recompress everything just to piss people off
             with zipfile.ZipFile(source, 'w', compression=zipfile.ZIP_DEFLATED) as zout:
@@ -368,7 +368,9 @@ def build_apk(args, module):
             execv([zipalign, '-f', '4', source, target])
 
             # Sign APK
-            execv([apksigner, 'sign', '--v1-signer-name', 'CERT',
+            execv([apksigner, 'sign',
+                  '--v4-signing-enabled', 'false',
+                  '--v1-signer-name', 'CERT',
                   '--ks', config['keyStore'],
                   '--ks-pass', f'pass:{config["keyStorePass"]}',
                   '--ks-key-alias', config['keyAlias'],
@@ -395,6 +397,22 @@ def build_app(args):
 def build_stub(args):
     header('* Building Magisk Manager stub')
     build_apk(args, 'stub')
+
+# Bind mount snet package on top of the stub folder
+def build_snet(args):
+    header('* Building snet extension')
+    proc = execv([gradlew, 'stub:assembleRelease'])
+    if proc.returncode != 0:
+        error('Build snet extention failed!')
+    source = op.join('stub', 'build', 'outputs', 'apk',
+                     'release', 'stub-release.apk')
+    target = op.join(config['outdir'], 'snet.jar')
+    # Extract classes.dex
+    with zipfile.ZipFile(target, 'w', compression=zipfile.ZIP_DEFLATED, allowZip64=False) as zout:
+        with zipfile.ZipFile(source) as zin:
+            zout.writestr('classes.dex', zin.read('classes.dex'))
+    rm(source)
+    header('Output: ' + target)
 
 
 def zip_main(args):

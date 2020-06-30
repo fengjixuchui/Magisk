@@ -4,7 +4,6 @@ import android.content.Context
 import android.os.Build
 import android.os.Environment
 import android.view.LayoutInflater
-import android.widget.Toast
 import androidx.databinding.Bindable
 import com.topjohnwu.magisk.BR
 import com.topjohnwu.magisk.BuildConfig
@@ -12,7 +11,6 @@ import com.topjohnwu.magisk.R
 import com.topjohnwu.magisk.core.Config
 import com.topjohnwu.magisk.core.Const
 import com.topjohnwu.magisk.core.Info
-import com.topjohnwu.magisk.core.isCanaryVersion
 import com.topjohnwu.magisk.core.utils.*
 import com.topjohnwu.magisk.databinding.DialogSettingsAppNameBinding
 import com.topjohnwu.magisk.databinding.DialogSettingsDownloadPathBinding
@@ -141,8 +139,7 @@ object UpdateChannel : SettingsItem.Selector() {
 
     override val title = R.string.settings_update_channel_title.asTransitive()
     override val entries get() = resources.getStringArray(R.array.update_channel).let {
-        if (!isCanaryVersion && Config.updateChannel < Config.Value.CANARY_CHANNEL)
-            it.take(it.size - 2).toTypedArray() else it
+        if (BuildConfig.DEBUG) it.toMutableList().apply { add("Canary") }.toTypedArray() else it
     }
     override val entryValRes = R.array.value_array
 }
@@ -210,21 +207,6 @@ object Reauthenticate : SettingsItem.Toggle() {
 
 object Magisk : SettingsItem.Section() {
     override val title = R.string.magisk.asTransitive()
-}
-
-object SafeMode : SettingsItem.Toggle() {
-    override val title = R.string.settings_safe_mode_title.asTransitive()
-    // Use old placeholder for now, will update text once native implementation is changed
-    override val description = R.string.settings_core_only_summary.asTransitive()
-    override var value by bindableValue(Config.coreOnly) {
-        if (Config.coreOnly == it) return@bindableValue
-        Config.coreOnly = it
-        when {
-            it -> runCatching { Const.MAGISK_DISABLE_FILE.createNewFile() }
-            else -> Const.MAGISK_DISABLE_FILE.delete()
-        }
-        Utils.toast(R.string.settings_reboot_toast, Toast.LENGTH_LONG)
-    }
 }
 
 object MagiskHide : SettingsItem.Toggle() {
