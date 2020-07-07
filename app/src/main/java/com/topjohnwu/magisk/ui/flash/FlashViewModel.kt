@@ -3,15 +3,13 @@ package com.topjohnwu.magisk.ui.flash
 import android.Manifest
 import android.content.res.Resources
 import android.net.Uri
-import android.os.Handler
 import android.view.MenuItem
-import androidx.core.os.postDelayed
 import androidx.databinding.ObservableArrayList
+import androidx.lifecycle.viewModelScope
 import com.topjohnwu.magisk.R
 import com.topjohnwu.magisk.core.Config
 import com.topjohnwu.magisk.core.Const
-import com.topjohnwu.magisk.core.tasks.FlashResultListener
-import com.topjohnwu.magisk.core.tasks.Flashing
+import com.topjohnwu.magisk.core.tasks.FlashZip
 import com.topjohnwu.magisk.core.tasks.MagiskInstaller
 import com.topjohnwu.magisk.core.view.Notifications
 import com.topjohnwu.magisk.extensions.*
@@ -23,18 +21,16 @@ import com.topjohnwu.magisk.ui.base.diffListOf
 import com.topjohnwu.magisk.ui.base.itemBindingOf
 import com.topjohnwu.magisk.utils.KObservableField
 import com.topjohnwu.superuser.Shell
+import kotlinx.coroutines.launch
 import java.io.File
 import java.util.*
 
 class FlashViewModel(
-    private val args: FlashFragmentArgs,
+    args: FlashFragmentArgs,
     private val resources: Resources
-) : BaseViewModel(),
-    FlashResultListener {
+) : BaseViewModel() {
 
-    val canShowReboot = Shell.rootAccess()
-    val showRestartTitle = KObservableField(false)
-
+    val showReboot = KObservableField(Shell.rootAccess())
     val behaviorText = KObservableField(resources.getString(R.string.flashing))
 
     val adapter = BindingAdapter<ConsoleItem>()
@@ -42,8 +38,7 @@ class FlashViewModel(
     val itemBinding = itemBindingOf<ConsoleItem>()
 
     private val outItems = ObservableArrayList<String>()
-    private val logItems =
-        Collections.synchronizedList(mutableListOf<String>())
+    private val logItems = Collections.synchronizedList(mutableListOf<String>())
 
     init {
         outItems.sendUpdatesTo(items) { it.map { ConsoleItem(it) } }
@@ -57,53 +52,40 @@ class FlashViewModel(
     }
 
     private fun startFlashing(installer: Uri, uri: Uri?, action: String) {
-        when (action) {
-            Const.Value.FLASH_ZIP -> Flashing.Install(
-                installer,
-                outItems,
-                logItems,
-                this
-            ).exec()
-            Const.Value.UNINSTALL -> Flashing.Uninstall(
-                installer,
-                outItems,
-                logItems,
-                this
-            ).exec()
-            Const.Value.FLASH_MAGISK -> MagiskInstaller.Direct(
-                installer,
-                outItems,
-                logItems,
-                this
-            ).exec()
-            Const.Value.FLASH_INACTIVE_SLOT -> MagiskInstaller.SecondSlot(
-                installer,
-                outItems,
-                logItems,
-                this
-            ).exec()
-            Const.Value.PATCH_FILE -> MagiskInstaller.Patch(
-                installer,
-                uri ?: return,
-                outItems,
-                logItems,
-                this
-            ).exec()
-            else -> backPressed()
+        viewModelScope.launch {
+            val result = when (action) {
+                Const.Value.FLASH_ZIP -> {
+                    FlashZip(installer, outItems, logItems).exec()
+                }
+                Const.Value.UNINSTALL -> {
+                    showReboot.value = false
+                    FlashZip.Uninstall(installer, outItems, logItems).exec()
+                }
+                Const.Value.FLASH_MAGISK -> {
+                    MagiskInstaller.Direct(installer, outItems, logItems).exec()
+                }
+                Const.Value.FLASH_INACTIVE_SLOT -> {
+                    MagiskInstaller.SecondSlot(installer, outItems, logItems).exec()
+                }
+                Const.Value.PATCH_FILE -> {
+                    uri ?: return@launch
+                    showReboot.value = false
+                    MagiskInstaller.Patch(installer, uri, outItems, logItems).exec()
+                }
+                else -> {
+                    back()
+                    return@launch
+                }
+            }
+            onResult(result)
         }
     }
 
-    override fun onResult(success: Boolean) {
+    private fun onResult(success: Boolean) {
         state = if (success) State.LOADED else State.LOADING_FAILED
         behaviorText.value = when {
             success -> resources.getString(R.string.done)
             else -> resources.getString(R.string.failure)
-        }
-
-        if (success) {
-            Handler().postDelayed(500) {
-                showRestartTitle.value = true
-            }
         }
     }
 
@@ -135,7 +117,4 @@ class FlashViewModel(
         .add()
 
     fun restartPressed() = reboot()
-
-    fun backPressed() = back()
-
 }
