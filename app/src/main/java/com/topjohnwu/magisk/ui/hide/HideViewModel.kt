@@ -2,11 +2,11 @@ package com.topjohnwu.magisk.ui.hide
 
 import android.content.pm.ApplicationInfo
 import androidx.databinding.Bindable
+import androidx.lifecycle.viewModelScope
 import com.topjohnwu.magisk.BR
 import com.topjohnwu.magisk.core.utils.currentLocale
 import com.topjohnwu.magisk.data.repository.MagiskRepository
-import com.topjohnwu.magisk.extensions.subscribeK
-import com.topjohnwu.magisk.extensions.toggle
+import com.topjohnwu.magisk.ktx.value
 import com.topjohnwu.magisk.model.entity.HideAppInfo
 import com.topjohnwu.magisk.model.entity.HideTarget
 import com.topjohnwu.magisk.model.entity.ProcessHideApp
@@ -17,7 +17,10 @@ import com.topjohnwu.magisk.ui.base.BaseViewModel
 import com.topjohnwu.magisk.ui.base.Queryable
 import com.topjohnwu.magisk.ui.base.filterableListOf
 import com.topjohnwu.magisk.ui.base.itemBindingOf
-import com.topjohnwu.magisk.utils.KObservableField
+import com.topjohnwu.magisk.utils.observable
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class HideViewModel(
     private val magiskRepo: MagiskRepository
@@ -25,21 +28,16 @@ class HideViewModel(
 
     override val queryDelay = 1000L
 
-    var isShowSystem = false
-        @Bindable get
-        set(value) {
-            field = value
-            notifyPropertyChanged(BR.showSystem)
-            submitQuery()
-        }
+    @get:Bindable
+    var isShowSystem by observable(false, BR.showSystem) {
+        submitQuery()
+    }
 
-    var query = ""
-        @Bindable get
-        set(value) {
-            field = value
-            notifyPropertyChanged(BR.query)
-            submitQuery()
-        }
+    @get:Bindable
+    var query by observable("", BR.query) {
+        submitQuery()
+    }
+
     val items = filterableListOf<HideItem>()
     val itemBinding = itemBindingOf<HideItem> {
         it.bindExtra(BR.viewModel, this)
@@ -48,21 +46,18 @@ class HideViewModel(
         it.bindExtra(BR.viewModel, this)
     }
 
-    val isFilterExpanded = KObservableField(false)
-
-    override fun rxRefresh() = magiskRepo.fetchApps()
-        .map { it to magiskRepo.fetchHideTargets().blockingGet() }
-        .map { pair -> pair.first.map { mergeAppTargets(it, pair.second) } }
-        .flattenAsFlowable { it }
-        .map { HideItem(it) }
-        .toList()
-        .map { it.sort() }
-        .map { it to items.calculateDiff(it) }
-        .applyViewModel(this)
-        .subscribeK {
-            items.update(it.first, it.second)
-            submitQuery()
+    override fun refresh() = viewModelScope.launch {
+        state = State.LOADING
+        val apps = magiskRepo.fetchApps()
+        val hides = magiskRepo.fetchHideTargets()
+        val (hidden, diff) = withContext(Dispatchers.Default) {
+            val hidden = apps.map { mergeAppTargets(it, hides) }.map { HideItem(it) }.sort()
+            hidden to items.calculateDiff(hidden)
         }
+        items.update(hidden, diff)
+        submitQuery()
+        state = State.LOADED
+    }
 
     // ---
 
@@ -101,15 +96,8 @@ class HideViewModel(
     fun toggleItem(item: HideProcessItem) = magiskRepo
         .toggleHide(item.isHidden.value, item.item.packageName, item.item.name)
 
-    fun toggle(item: KObservableField<Boolean>) = item.toggle()
-
     fun resetQuery() {
         query = ""
     }
-
-    fun hideFilter() {
-        isFilterExpanded.value = false
-    }
-
 }
 

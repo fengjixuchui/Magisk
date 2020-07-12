@@ -11,10 +11,11 @@ import com.topjohnwu.magisk.core.magiskdb.SettingsDao
 import com.topjohnwu.magisk.core.magiskdb.StringDao
 import com.topjohnwu.magisk.core.utils.BiometricHelper
 import com.topjohnwu.magisk.core.utils.Utils
+import com.topjohnwu.magisk.core.utils.refreshLocale
 import com.topjohnwu.magisk.data.repository.DBConfig
 import com.topjohnwu.magisk.di.Protected
-import com.topjohnwu.magisk.extensions.get
-import com.topjohnwu.magisk.extensions.inject
+import com.topjohnwu.magisk.ktx.get
+import com.topjohnwu.magisk.ktx.inject
 import com.topjohnwu.magisk.model.preference.PreferenceModel
 import com.topjohnwu.magisk.ui.theme.Theme
 import com.topjohnwu.superuser.Shell
@@ -125,7 +126,13 @@ object Config : PreferenceModel, DBConfig {
     var showSystemApp by preference(Key.SHOW_SYSTEM_APP, false)
 
     var customChannelUrl by preference(Key.CUSTOM_CHANNEL, "")
-    var locale by preference(Key.LOCALE, "")
+    private var localePrefs by preference(Key.LOCALE, "")
+    var locale
+        get() = localePrefs
+        set(value) {
+            localePrefs = value
+            refreshLocale()
+        }
 
     var rootMode by dbSettings(Key.ROOT_ACCESS, Value.ROOT_ACCESS_APPS_AND_ADB)
     var suMntNamespaceMode by dbSettings(Key.SU_MNT_NS, Value.NAMESPACE_MODE_REQUESTER)

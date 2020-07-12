@@ -1,27 +1,30 @@
 package com.topjohnwu.magisk.ui.flash
 
-import android.Manifest
 import android.content.res.Resources
 import android.net.Uri
 import android.view.MenuItem
+import androidx.databinding.Bindable
 import androidx.databinding.ObservableArrayList
 import androidx.lifecycle.viewModelScope
+import com.topjohnwu.magisk.BR
 import com.topjohnwu.magisk.R
 import com.topjohnwu.magisk.core.Config
 import com.topjohnwu.magisk.core.Const
 import com.topjohnwu.magisk.core.tasks.FlashZip
 import com.topjohnwu.magisk.core.tasks.MagiskInstaller
 import com.topjohnwu.magisk.core.view.Notifications
-import com.topjohnwu.magisk.extensions.*
+import com.topjohnwu.magisk.ktx.*
 import com.topjohnwu.magisk.model.binding.BindingAdapter
 import com.topjohnwu.magisk.model.entity.recycler.ConsoleItem
 import com.topjohnwu.magisk.model.events.SnackbarEvent
 import com.topjohnwu.magisk.ui.base.BaseViewModel
 import com.topjohnwu.magisk.ui.base.diffListOf
 import com.topjohnwu.magisk.ui.base.itemBindingOf
-import com.topjohnwu.magisk.utils.KObservableField
+import com.topjohnwu.magisk.utils.observable
 import com.topjohnwu.superuser.Shell
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 import java.util.*
 
@@ -30,8 +33,10 @@ class FlashViewModel(
     private val resources: Resources
 ) : BaseViewModel() {
 
-    val showReboot = KObservableField(Shell.rootAccess())
-    val behaviorText = KObservableField(resources.getString(R.string.flashing))
+    @get:Bindable
+    var showReboot by observable(Shell.rootAccess(), BR.showReboot)
+    @get:Bindable
+    var behaviorText by observable(resources.getString(R.string.flashing), BR.behaviorText)
 
     val adapter = BindingAdapter<ConsoleItem>()
     val items = diffListOf<ConsoleItem>()
@@ -41,7 +46,7 @@ class FlashViewModel(
     private val logItems = Collections.synchronizedList(mutableListOf<String>())
 
     init {
-        outItems.sendUpdatesTo(items) { it.map { ConsoleItem(it) } }
+        outItems.sendUpdatesTo(items, viewModelScope) { it.map { ConsoleItem(it) } }
         outItems.copyNewInputInto(logItems)
 
         args.dismissId.takeIf { it != -1 }?.also {
@@ -58,7 +63,7 @@ class FlashViewModel(
                     FlashZip(installer, outItems, logItems).exec()
                 }
                 Const.Value.UNINSTALL -> {
-                    showReboot.value = false
+                    showReboot = false
                     FlashZip.Uninstall(installer, outItems, logItems).exec()
                 }
                 Const.Value.FLASH_MAGISK -> {
@@ -69,7 +74,7 @@ class FlashViewModel(
                 }
                 Const.Value.PATCH_FILE -> {
                     uri ?: return@launch
-                    showReboot.value = false
+                    showReboot = false
                     MagiskInstaller.Patch(installer, uri, outItems, logItems).exec()
                 }
                 else -> {
@@ -83,7 +88,7 @@ class FlashViewModel(
 
     private fun onResult(success: Boolean) {
         state = if (success) State.LOADED else State.LOADING_FAILED
-        behaviorText.value = when {
+        behaviorText = when {
             success -> resources.getString(R.string.done)
             else -> resources.getString(R.string.failure)
         }
@@ -96,25 +101,23 @@ class FlashViewModel(
         return true
     }
 
-    private fun savePressed() = withPermissions(
-        Manifest.permission.READ_EXTERNAL_STORAGE,
-        Manifest.permission.WRITE_EXTERNAL_STORAGE
-    )
-        .map { now }
-        .map { it.toTime(timeFormatStandard) }
-        .map { Const.MAGISK_INSTALL_LOG_FILENAME.format(it) }
-        .map { File(Config.downloadDirectory, it) }
-        .map { file ->
-            file.bufferedWriter().use { writer ->
-                logItems.forEach {
-                    writer.write(it)
-                    writer.newLine()
+    private fun savePressed() = withExternalRW {
+        if (!it)
+            return@withExternalRW
+        viewModelScope.launch {
+            val name = Const.MAGISK_INSTALL_LOG_FILENAME.format(now.toTime(timeFormatStandard))
+            val file = File(Config.downloadDirectory, name)
+            withContext(Dispatchers.IO) {
+                file.bufferedWriter().use { writer ->
+                    logItems.forEach {
+                        writer.write(it)
+                        writer.newLine()
+                    }
                 }
             }
-            file.path
+            SnackbarEvent(file.path).publish()
         }
-        .subscribeK { SnackbarEvent(it).publish() }
-        .add()
+    }
 
     fun restartPressed() = reboot()
 }

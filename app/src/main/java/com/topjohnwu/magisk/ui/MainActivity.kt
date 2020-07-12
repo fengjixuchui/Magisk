@@ -6,7 +6,6 @@ import android.view.View
 import android.view.ViewTreeObserver
 import android.view.WindowManager
 import androidx.coordinatorlayout.widget.CoordinatorLayout
-import androidx.core.graphics.Insets
 import androidx.core.view.forEach
 import androidx.core.view.setPadding
 import androidx.core.view.updateLayoutParams
@@ -17,8 +16,10 @@ import com.topjohnwu.magisk.R
 import com.topjohnwu.magisk.core.Const
 import com.topjohnwu.magisk.core.Info
 import com.topjohnwu.magisk.databinding.ActivityMainMd2Binding
-import com.topjohnwu.magisk.extensions.startAnimations
+import com.topjohnwu.magisk.ktx.startAnimations
 import com.topjohnwu.magisk.ui.base.BaseUIActivity
+import com.topjohnwu.magisk.ui.base.BaseViewModel
+import com.topjohnwu.magisk.ui.base.ReselectionTarget
 import com.topjohnwu.magisk.ui.home.HomeFragmentDirections
 import com.topjohnwu.magisk.utils.HideBottomViewOnScrollBehavior
 import com.topjohnwu.magisk.utils.HideTopViewOnScrollBehavior
@@ -26,6 +27,8 @@ import com.topjohnwu.magisk.utils.HideableBehavior
 import com.topjohnwu.magisk.view.MagiskDialog
 import com.topjohnwu.superuser.Shell
 import org.koin.androidx.viewmodel.ext.android.viewModel
+
+class MainViewModel : BaseViewModel()
 
 open class MainActivity : BaseUIActivity<MainViewModel, ActivityMainMd2Binding>() {
 
@@ -136,10 +139,6 @@ open class MainActivity : BaseUIActivity<MainViewModel, ActivityMainMd2Binding>(
             else -> return super.onOptionsItemSelected(item)
         }
         return true
-    }
-
-    override fun peekSystemWindowInsets(insets: Insets) {
-        viewModel.insets.value = insets
     }
 
     fun setDisplayHomeAsUpEnabled(isEnabled: Boolean) {

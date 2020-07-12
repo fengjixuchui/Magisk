@@ -6,6 +6,9 @@ import android.content.pm.PackageManager
 import android.content.res.Resources
 import android.graphics.drawable.Drawable
 import android.os.CountDownTimer
+import androidx.databinding.Bindable
+import androidx.lifecycle.viewModelScope
+import com.topjohnwu.magisk.BR
 import com.topjohnwu.magisk.R
 import com.topjohnwu.magisk.core.Config
 import com.topjohnwu.magisk.core.magiskdb.PolicyDao
@@ -16,8 +19,9 @@ import com.topjohnwu.magisk.core.utils.BiometricHelper
 import com.topjohnwu.magisk.model.entity.recycler.SpinnerRvItem
 import com.topjohnwu.magisk.model.events.DieEvent
 import com.topjohnwu.magisk.ui.base.BaseViewModel
-import com.topjohnwu.magisk.utils.KObservableField
+import com.topjohnwu.magisk.utils.observable
 import com.topjohnwu.superuser.internal.UiThreadHandler
+import kotlinx.coroutines.launch
 import me.tatarka.bindingcollectionadapter2.BindingListViewAdapter
 import me.tatarka.bindingcollectionadapter2.ItemBinding
 import java.util.concurrent.TimeUnit.SECONDS
@@ -29,16 +33,20 @@ class SuRequestViewModel(
     private val res: Resources
 ) : BaseViewModel() {
 
-    val icon = KObservableField<Drawable?>(null)
-    val title = KObservableField("")
-    val packageName = KObservableField("")
-
-    val denyText = KObservableField(res.getString(R.string.deny))
-    val warningText = KObservableField<CharSequence>(res.getString(R.string.su_warning))
-
-    val selectedItemPosition = KObservableField(0)
-
-    val grantEnabled = KObservableField(false)
+    @get:Bindable
+    var icon by observable(null as Drawable?, BR.icon)
+    @get:Bindable
+    var title by observable("", BR.title)
+    @get:Bindable
+    var packageName by observable("", BR.packageName)
+    @get:Bindable
+    var denyText by observable(res.getString(R.string.deny), BR.denyText)
+    @get:Bindable
+    var warningText by observable(res.getString(R.string.su_warning), BR.warningText)
+    @get:Bindable
+    var selectedItemPosition by observable(0, BR.selectedItemPosition)
+    @get:Bindable
+    var grantEnabled by observable(false, BR.grantEnabled)
 
     private val items = res.getStringArray(R.array.allow_timeout).map { SpinnerRvItem(it) }
     val adapter = BindingListViewAdapter<SpinnerRvItem>(1).apply {
@@ -72,8 +80,11 @@ class SuRequestViewModel(
         return false
     }
 
-    fun handleRequest(intent: Intent): Boolean {
-        return handler.start(intent)
+    fun handleRequest(intent: Intent) {
+        viewModelScope.launch {
+            if (!handler.start(intent))
+                DieEvent().publish()
+        }
     }
 
     private inner class Handler : SuRequestHandler(pm, policyDB) {
@@ -83,7 +94,7 @@ class SuRequestViewModel(
         fun respond(action: Int) {
             timer.cancel()
 
-            val pos = selectedItemPosition.value
+            val pos = selectedItemPosition
             timeoutPrefs.edit().putInt(policy.packageName, pos).apply()
             respond(action, Config.Value.TIMEOUT_LIST[pos])
 
@@ -93,16 +104,16 @@ class SuRequestViewModel(
 
         fun cancelTimer() {
             timer.cancel()
-            denyText.value = res.getString(R.string.deny)
+            denyText = res.getString(R.string.deny)
         }
 
         override fun onStart() {
-            icon.value = policy.applicationInfo.loadIcon(pm)
-            title.value = policy.appName
-            packageName.value = policy.packageName
+            icon = policy.applicationInfo.loadIcon(pm)
+            title = policy.appName
+            packageName = policy.packageName
             UiThreadHandler.handler.post {
                 // Delay is required to properly do selection
-                selectedItemPosition.value = timeoutPrefs.getInt(policy.packageName, 0)
+                selectedItemPosition = timeoutPrefs.getInt(policy.packageName, 0)
             }
 
             // Set timer
@@ -116,14 +127,14 @@ class SuRequestViewModel(
         ) : CountDownTimer(millis, interval) {
 
             override fun onTick(remains: Long) {
-                if (!grantEnabled.value && remains <= millis - 1000) {
-                    grantEnabled.value = true
+                if (!grantEnabled && remains <= millis - 1000) {
+                    grantEnabled = true
                 }
-                denyText.value = "${res.getString(R.string.deny)} (${(remains / 1000) + 1})"
+                denyText = "${res.getString(R.string.deny)} (${(remains / 1000) + 1})"
             }
 
             override fun onFinish() {
-                denyText.value = res.getString(R.string.deny)
+                denyText = res.getString(R.string.deny)
                 respond(DENY)
             }
 

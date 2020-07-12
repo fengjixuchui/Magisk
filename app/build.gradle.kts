@@ -76,14 +76,9 @@ dependencies {
 
     implementation("com.github.topjohnwu:jtar:1.0.0")
     implementation("com.jakewharton.timber:timber:4.7.1")
-    implementation("com.github.pwittchen:reactivenetwork-rx2:3.0.8")
 
-    implementation("io.reactivex.rxjava2:rxjava:2.2.19")
-    implementation("io.reactivex.rxjava2:rxkotlin:2.4.0")
-    implementation("io.reactivex.rxjava2:rxandroid:2.1.1")
-
-    implementation("org.jetbrains.kotlin:kotlin-stdlib:${Deps.vKotlin}")
-    implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk7:${Deps.vKotlin}")
+    implementation(kotlin("stdlib"))
+    implementation(kotlin("stdlib-jdk7"))
 
     val vBAdapt = "4.0.0"
     val bindingAdapter = "me.tatarka.bindingcollectionadapter2:bindingcollectionadapter"
@@ -109,7 +104,6 @@ dependencies {
     implementation("com.squareup.retrofit2:retrofit:${vRetrofit}")
     implementation("com.squareup.retrofit2:converter-moshi:${vRetrofit}")
     implementation("com.squareup.retrofit2:converter-scalars:${vRetrofit}")
-    implementation("com.squareup.retrofit2:adapter-rxjava2:${vRetrofit}")
 
     val vOkHttp = "3.12.12"
     implementation("com.squareup.okhttp3:okhttp") {
@@ -126,22 +120,23 @@ dependencies {
 
     val vRoom = "2.2.5"
     implementation("androidx.room:room-runtime:${vRoom}")
-    implementation("androidx.room:room-rxjava2:${vRoom}")
+    implementation("androidx.room:room-ktx:${vRoom}")
     kapt("androidx.room:room-compiler:${vRoom}")
 
     implementation("androidx.navigation:navigation-fragment-ktx:${Deps.vNav}")
     implementation("androidx.navigation:navigation-ui-ktx:${Deps.vNav}")
 
     implementation("androidx.biometric:biometric:1.0.1")
-    implementation("androidx.constraintlayout:constraintlayout:2.0.0-beta7")
+    implementation("androidx.constraintlayout:constraintlayout:2.0.0-beta8")
     implementation("androidx.swiperefreshlayout:swiperefreshlayout:1.1.0")
     implementation("androidx.browser:browser:1.2.0")
     implementation("androidx.preference:preference:1.1.1")
     implementation("androidx.recyclerview:recyclerview:1.1.0")
     implementation("androidx.fragment:fragment-ktx:1.2.5")
-    implementation("androidx.work:work-runtime:2.3.4")
+    implementation("androidx.work:work-runtime-ktx:2.3.4")
     implementation("androidx.transition:transition:1.3.1")
     implementation("androidx.multidex:multidex:2.0.1")
     implementation("androidx.core:core-ktx:1.3.0")
+    implementation("androidx.localbroadcastmanager:localbroadcastmanager:1.0.0")
     implementation("com.google.android.material:material:1.2.0-beta01")
 }

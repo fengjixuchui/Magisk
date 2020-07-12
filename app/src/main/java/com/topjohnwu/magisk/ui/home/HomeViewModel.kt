@@ -1,7 +1,8 @@
 package com.topjohnwu.magisk.ui.home
 
-import android.Manifest
 import android.os.Build
+import androidx.databinding.Bindable
+import androidx.lifecycle.viewModelScope
 import com.topjohnwu.magisk.BuildConfig
 import com.topjohnwu.magisk.R
 import com.topjohnwu.magisk.core.Config
@@ -10,9 +11,11 @@ import com.topjohnwu.magisk.core.base.BaseActivity
 import com.topjohnwu.magisk.core.download.RemoteFileService
 import com.topjohnwu.magisk.core.model.MagiskJson
 import com.topjohnwu.magisk.core.model.ManagerJson
-import com.topjohnwu.magisk.core.model.UpdateInfo
 import com.topjohnwu.magisk.data.repository.MagiskRepository
-import com.topjohnwu.magisk.extensions.*
+import com.topjohnwu.magisk.ktx.await
+import com.topjohnwu.magisk.ktx.packageName
+import com.topjohnwu.magisk.ktx.res
+import com.topjohnwu.magisk.ktx.value
 import com.topjohnwu.magisk.model.entity.internal.DownloadSubject.Manager
 import com.topjohnwu.magisk.model.entity.recycler.DeveloperItem
 import com.topjohnwu.magisk.model.entity.recycler.HomeItem
@@ -24,8 +27,9 @@ import com.topjohnwu.magisk.model.events.dialog.ManagerInstallDialog
 import com.topjohnwu.magisk.model.events.dialog.UninstallDialog
 import com.topjohnwu.magisk.ui.base.BaseViewModel
 import com.topjohnwu.magisk.ui.base.itemBindingOf
-import com.topjohnwu.magisk.utils.KObservableField
+import com.topjohnwu.magisk.utils.observable
 import com.topjohnwu.superuser.Shell
+import kotlinx.coroutines.launch
 import me.tatarka.bindingcollectionadapter2.BR
 import kotlin.math.roundToInt
 
@@ -37,22 +41,26 @@ class HomeViewModel(
     private val repoMagisk: MagiskRepository
 ) : BaseViewModel() {
 
-    val isNoticeVisible = KObservableField(Config.safetyNotice)
-
-    val stateMagisk = KObservableField(MagiskState.LOADING)
-    val stateManager = KObservableField(MagiskState.LOADING)
-
-    val stateMagiskRemoteVersion = KObservableField(R.string.loading.res())
-    val stateMagiskInstalledVersion get() =
+    @get:Bindable
+    var isNoticeVisible by observable(Config.safetyNotice, BR.noticeVisible)
+    @get:Bindable
+    var stateMagisk by observable(MagiskState.LOADING, BR.stateMagisk)
+    @get:Bindable
+    var stateManager by observable(MagiskState.LOADING, BR.stateManager)
+    @get:Bindable
+    var magiskRemoteVersion by observable(R.string.loading.res(), BR.magiskRemoteVersion)
+    val magiskInstalledVersion get() =
         "${Info.env.magiskVersionString} (${Info.env.magiskVersionCode})"
-    val stateMagiskMode get() = R.string.home_status_normal.res()
+    val magiskMode get() = R.string.home_status_normal.res()
 
-    val stateManagerRemoteVersion = KObservableField(R.string.loading.res())
-    val stateManagerInstalledVersion = Info.stub?.let {
+    @get:Bindable
+    var managerRemoteVersion by observable(R.string.loading.res(), BR.managerRemoteVersion)
+    val managerInstalledVersion = Info.stub?.let {
         "${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE}) (${it.version})"
     } ?: "${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})"
     val statePackageName = packageName
-    val stateManagerProgress = KObservableField(0)
+    @get:Bindable
+    var stateManagerProgress by observable(0, BR.stateManagerProgress)
 
     val items = listOf(DeveloperItem.Mainline, DeveloperItem.App, DeveloperItem.Project)
     val itemBinding = itemBindingOf<HomeItem> {
@@ -67,32 +75,34 @@ class HomeViewModel(
     init {
         RemoteFileService.progressBroadcast.observeForever {
             when (it?.second) {
-                is Manager -> stateManagerProgress.value = it.first.times(100f).roundToInt()
+                is Manager -> stateManagerProgress = it.first.times(100f).roundToInt()
             }
         }
     }
 
-    override fun rxRefresh() = repoMagisk.fetchUpdate()
-        .onErrorReturn { null }
-        .subscribeK { it?.updateUI() }
+    override fun refresh() = viewModelScope.launch {
+        repoMagisk.fetchUpdate()?.apply {
+            stateMagisk = when {
+                !Info.env.isActive -> MagiskState.NOT_INSTALLED
+                magisk.isObsolete -> MagiskState.OBSOLETE
+                else -> MagiskState.UP_TO_DATE
+            }
 
-    private fun UpdateInfo.updateUI() {
-        stateMagisk.value = when {
-            !Info.env.isActive -> MagiskState.NOT_INSTALLED
-            magisk.isObsolete -> MagiskState.OBSOLETE
-            else -> MagiskState.UP_TO_DATE
+            stateManager = when {
+                !app.isUpdateChannelCorrect && isConnected.value -> MagiskState.NOT_INSTALLED
+                app.isObsolete -> MagiskState.OBSOLETE
+                else -> MagiskState.UP_TO_DATE
+            }
+
+            magiskRemoteVersion =
+                "${magisk.version} (${magisk.versionCode})"
+            managerRemoteVersion =
+                "${app.version} (${app.versionCode}) (${stub.versionCode})"
+
+            launch {
+                ensureEnv()
+            }
         }
-
-        stateManager.value = when {
-            !app.isUpdateChannelCorrect && isConnected.value -> MagiskState.NOT_INSTALLED
-            app.isObsolete -> MagiskState.OBSOLETE
-            else -> MagiskState.UP_TO_DATE
-        }
-
-        stateMagiskRemoteVersion.value = "${magisk.version} (${magisk.versionCode})"
-        stateManagerRemoteVersion.value = "${app.version} (${app.versionCode}) (${stub.versionCode})"
-
-        ensureEnv()
     }
 
     val showTest = false
@@ -109,21 +119,18 @@ class HomeViewModel(
 
     fun onManagerPressed() = ManagerInstallDialog().publish()
 
-    fun onMagiskPressed() = withPermissions(
-        Manifest.permission.READ_EXTERNAL_STORAGE,
-        Manifest.permission.WRITE_EXTERNAL_STORAGE
-    ).map { check(it);it }
-        .subscribeK { HomeFragmentDirections.actionHomeFragmentToInstallFragment().publish() }
-        .add()
-
-    fun toggle(kof: KObservableField<Boolean>) = kof.toggle()
+    fun onMagiskPressed() = withExternalRW {
+        if (it) {
+            HomeFragmentDirections.actionHomeFragmentToInstallFragment().publish()
+        }
+    }
 
     fun hideNotice() {
         Config.safetyNotice = false
-        isNoticeVisible.value = false
+        isNoticeVisible = false
     }
 
-    private fun ensureEnv() {
+    private suspend fun ensureEnv() {
         val invalidStates = listOf(
             MagiskState.NOT_INSTALLED,
             MagiskState.LOADING
@@ -131,7 +138,7 @@ class HomeViewModel(
 
         // Don't bother checking env when magisk is not installed, loading or already has been shown
         if (
-            invalidStates.any { it == stateMagisk.value } ||
+            invalidStates.any { it == stateMagisk } ||
             shownDialog ||
             // don't care for emulators either
             Build.DEVICE.orEmpty().contains("generic") ||
@@ -140,21 +147,18 @@ class HomeViewModel(
             return
         }
 
-        Shell.su("env_check")
-            .toSingle()
-            .map { it.exec() }
-            .filter { !it.isSuccess }
-            .subscribeK {
-                shownDialog = true
-                EnvFixDialog().publish()
-            }
+        val result = Shell.su("env_check").await()
+        if (!result.isSuccess) {
+            shownDialog = true
+            EnvFixDialog().publish()
+        }
     }
 
     private val MagiskJson.isObsolete
         get() = Info.env.isActive && Info.env.magiskVersionCode < versionCode
-    val ManagerJson.isUpdateChannelCorrect
+    private val ManagerJson.isUpdateChannelCorrect
         get() = versionCode > 0
-    val ManagerJson.isObsolete
+    private val ManagerJson.isObsolete
         get() = BuildConfig.VERSION_CODE < versionCode
 
 }

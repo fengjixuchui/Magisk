@@ -1,14 +1,15 @@
 package com.topjohnwu.magisk.core
 
-import com.github.pwittchen.reactivenetwork.library.rx2.ReactiveNetwork
+import androidx.databinding.ObservableField
 import com.topjohnwu.magisk.DynAPK
 import com.topjohnwu.magisk.core.model.UpdateInfo
-import com.topjohnwu.magisk.extensions.get
-import com.topjohnwu.magisk.extensions.subscribeK
+import com.topjohnwu.magisk.core.net.NetworkObserver
+import com.topjohnwu.magisk.ktx.get
+import com.topjohnwu.magisk.ktx.value
 import com.topjohnwu.magisk.utils.CachedValue
-import com.topjohnwu.magisk.utils.KObservableField
 import com.topjohnwu.superuser.Shell
 import com.topjohnwu.superuser.ShellUtils.fastCmd
+import com.topjohnwu.superuser.internal.UiThreadHandler
 import java.io.FileInputStream
 import java.io.IOException
 
@@ -35,11 +36,10 @@ object Info {
     @JvmStatic var ramdisk = false
 
     val isConnected by lazy {
-        KObservableField(false).also { field ->
-            ReactiveNetwork.observeNetworkConnectivity(get())
-                .subscribeK {
-                    field.value = it.available()
-                }
+        ObservableField(false).also { field ->
+            NetworkObserver.observe(get()) {
+                UiThreadHandler.run { field.value = it.isAvailable }
+            }
         }
     }
 

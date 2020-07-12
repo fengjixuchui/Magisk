@@ -12,7 +12,7 @@ import androidx.databinding.ViewDataBinding
 import androidx.fragment.app.Fragment
 import androidx.navigation.NavDirections
 import com.topjohnwu.magisk.BR
-import com.topjohnwu.magisk.extensions.startAnimations
+import com.topjohnwu.magisk.ktx.startAnimations
 import com.topjohnwu.magisk.model.events.EventHandler
 import com.topjohnwu.magisk.model.events.ViewEvent
 
@@ -87,5 +87,11 @@ abstract class BaseUIFragment<ViewModel : BaseViewModel, Binding : ViewDataBindi
     fun NavDirections.navigate() {
         navigation?.navigate(this)
     }
+
+}
+
+interface ReselectionTarget {
+
+    fun onReselected()
 
 }

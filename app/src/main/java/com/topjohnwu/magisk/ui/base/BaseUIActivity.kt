@@ -18,8 +18,8 @@ import androidx.navigation.findNavController
 import com.topjohnwu.magisk.BR
 import com.topjohnwu.magisk.core.Config
 import com.topjohnwu.magisk.core.base.BaseActivity
-import com.topjohnwu.magisk.extensions.snackbar
-import com.topjohnwu.magisk.extensions.startAnimations
+import com.topjohnwu.magisk.ktx.snackbar
+import com.topjohnwu.magisk.ktx.startAnimations
 import com.topjohnwu.magisk.model.events.EventHandler
 import com.topjohnwu.magisk.model.events.SnackbarEvent
 import com.topjohnwu.magisk.model.events.ViewEvent
@@ -115,7 +115,7 @@ abstract class BaseUIActivity<ViewModel : BaseViewModel, Binding : ViewDataBindi
     }
 
     override fun peekSystemWindowInsets(insets: Insets) {
-        viewModel.insets.value = insets
+        viewModel.insets = insets
     }
 
     protected fun ViewEvent.dispatchOnSelf() = onEventDispatched(this)

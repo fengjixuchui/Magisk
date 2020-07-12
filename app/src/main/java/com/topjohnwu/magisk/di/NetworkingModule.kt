@@ -7,6 +7,7 @@ import com.topjohnwu.magisk.data.network.GithubApiServices
 import com.topjohnwu.magisk.data.network.GithubRawServices
 import com.topjohnwu.magisk.net.Networking
 import com.topjohnwu.magisk.net.NoSSLv3SocketFactory
+import com.topjohnwu.magisk.view.PrecomputedTextSetter
 import io.noties.markwon.Markwon
 import io.noties.markwon.html.HtmlPlugin
 import io.noties.markwon.image.ImagesPlugin
@@ -17,7 +18,6 @@ import okhttp3.OkHttpClient
 import okhttp3.dnsoverhttps.DnsOverHttps
 import org.koin.dsl.module
 import retrofit2.Retrofit
-import retrofit2.adapter.rxjava2.RxJava2CallAdapterFactory
 import retrofit2.converter.moshi.MoshiConverterFactory
 import retrofit2.converter.scalars.ScalarsConverterFactory
 import java.net.InetAddress
@@ -80,7 +80,6 @@ fun createRetrofit(okHttpClient: OkHttpClient): Retrofit.Builder {
     return Retrofit.Builder()
         .addConverterFactory(ScalarsConverterFactory.create())
         .addConverterFactory(createMoshiConverterFactory())
-        .addCallAdapterFactory(RxJava2CallAdapterFactory.create())
         .client(okHttpClient)
 }
 
@@ -93,6 +92,7 @@ inline fun <reified T> createApiService(retrofitBuilder: Retrofit.Builder, baseU
 
 fun createMarkwon(context: Context, okHttpClient: OkHttpClient): Markwon {
     return Markwon.builder(context)
+        .textSetter(PrecomputedTextSetter())
         .usePlugin(HtmlPlugin.create())
         .usePlugin(ImagesPlugin.create {
             it.addSchemeHandler(OkHttpNetworkSchemeHandler.create(okHttpClient))
