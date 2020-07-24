@@ -12,12 +12,13 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.navigation.NavDirections
 import com.topjohnwu.magisk.BR
+import com.topjohnwu.magisk.R
 import com.topjohnwu.magisk.core.Info
 import com.topjohnwu.magisk.core.base.BaseActivity
 import com.topjohnwu.magisk.model.events.*
 import com.topjohnwu.magisk.model.navigation.NavigationWrapper
 import com.topjohnwu.magisk.utils.ObservableHost
-import com.topjohnwu.magisk.utils.observable
+import com.topjohnwu.magisk.utils.set
 import kotlinx.coroutines.Job
 import org.koin.core.KoinComponent
 
@@ -42,9 +43,11 @@ abstract class BaseViewModel(
     val viewEvents: LiveData<ViewEvent> get() = _viewEvents
 
     @get:Bindable
-    var insets by observable(Insets.NONE, BR.insets)
+    var insets = Insets.NONE
+        set(value) = set(value, field, { field = it }, BR.insets)
 
-    var state by observable(initialState, BR.loading, BR.loaded, BR.loadFailed)
+    var state= initialState
+        set(value) = set(value, field, { field = it }, BR.loading, BR.loaded, BR.loadFailed)
 
     private val _viewEvents = MutableLiveData<ViewEvent>()
     private var runningJob: Job? = null
@@ -83,8 +86,14 @@ abstract class BaseViewModel(
         PermissionEvent(permissions.toList(), callback).publish()
     }
 
-    fun withExternalRW(callback: (Boolean) -> Unit) {
-        withPermissions(Manifest.permission.WRITE_EXTERNAL_STORAGE, callback = callback)
+    fun withExternalRW(callback: () -> Unit) {
+        withPermissions(Manifest.permission.WRITE_EXTERNAL_STORAGE) {
+            if (!it) {
+                SnackbarEvent(R.string.external_rw_permission_denied).publish()
+            } else {
+                callback()
+            }
+        }
     }
 
     fun back() = BackPressEvent().publish()

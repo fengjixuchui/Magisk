@@ -69,6 +69,13 @@ androidExtensions {
     isExperimental = true
 }
 
+val copyUtils = tasks.register("copyUtils", Copy::class) {
+    from(rootProject.file("scripts/util_functions.sh"))
+    into("src/main/res/raw")
+}
+
+tasks["preBuild"]?.dependsOn(copyUtils)
+
 dependencies {
     implementation(fileTree(mapOf("dir" to "libs", "include" to listOf("*.jar"))))
     implementation(project(":app:shared"))
@@ -91,7 +98,7 @@ dependencies {
     implementation("io.noties.markwon:image:${vMarkwon}")
     implementation("com.caverock:androidsvg:1.4")
 
-    val vLibsu = "2.5.1"
+    val vLibsu = "2.5.2"
     implementation("com.github.topjohnwu.libsu:core:${vLibsu}")
     implementation("com.github.topjohnwu.libsu:io:${vLibsu}")
 
@@ -133,10 +140,10 @@ dependencies {
     implementation("androidx.preference:preference:1.1.1")
     implementation("androidx.recyclerview:recyclerview:1.1.0")
     implementation("androidx.fragment:fragment-ktx:1.2.5")
-    implementation("androidx.work:work-runtime-ktx:2.3.4")
+    implementation("androidx.work:work-runtime-ktx:2.4.0")
     implementation("androidx.transition:transition:1.3.1")
     implementation("androidx.multidex:multidex:2.0.1")
-    implementation("androidx.core:core-ktx:1.3.0")
+    implementation("androidx.core:core-ktx:1.3.1")
     implementation("androidx.localbroadcastmanager:localbroadcastmanager:1.0.0")
-    implementation("com.google.android.material:material:1.2.0-beta01")
+    implementation("com.google.android.material:material:1.2.0-rc01")
 }

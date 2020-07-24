@@ -13,7 +13,7 @@ import com.topjohnwu.magisk.model.events.SnackbarEvent
 import com.topjohnwu.magisk.ui.base.BaseViewModel
 import com.topjohnwu.magisk.ui.base.diffListOf
 import com.topjohnwu.magisk.ui.base.itemBindingOf
-import com.topjohnwu.magisk.utils.observable
+import com.topjohnwu.magisk.utils.set
 import com.topjohnwu.superuser.Shell
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -41,7 +41,8 @@ class LogViewModel(
 
     // --- magisk log
     @get:Bindable
-    var consoleText by observable(" ", BR.consoleText)
+    var consoleText= " "
+        set(value) = set(value, field, { field = it }, BR.consoleText)
 
     override fun refresh() = viewModelScope.launch {
         consoleText = repo.fetchMagiskLogs()
@@ -56,7 +57,7 @@ class LogViewModel(
         items.lastOrNull()?.isBottom = true
     }
 
-    fun saveMagiskLog() {
+    fun saveMagiskLog() = withExternalRW {
         val now = Calendar.getInstance()
         val filename = "magisk_log_%04d%02d%02d_%02d%02d%02d.log".format(
             now.get(Calendar.YEAR), now.get(Calendar.MONTH) + 1,
@@ -69,7 +70,7 @@ class LogViewModel(
             logFile.createNewFile()
         } catch (e: IOException) {
             Timber.e(e)
-            return
+            return@withExternalRW
         }
 
         Shell.su("cat ${Const.MAGISK_LOG} > $logFile").submit {

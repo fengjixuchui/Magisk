@@ -4,9 +4,9 @@ import android.content.pm.ApplicationInfo
 import androidx.databinding.Bindable
 import androidx.lifecycle.viewModelScope
 import com.topjohnwu.magisk.BR
+import com.topjohnwu.magisk.core.Config
 import com.topjohnwu.magisk.core.utils.currentLocale
 import com.topjohnwu.magisk.data.repository.MagiskRepository
-import com.topjohnwu.magisk.ktx.value
 import com.topjohnwu.magisk.model.entity.HideAppInfo
 import com.topjohnwu.magisk.model.entity.HideTarget
 import com.topjohnwu.magisk.model.entity.ProcessHideApp
@@ -17,7 +17,7 @@ import com.topjohnwu.magisk.ui.base.BaseViewModel
 import com.topjohnwu.magisk.ui.base.Queryable
 import com.topjohnwu.magisk.ui.base.filterableListOf
 import com.topjohnwu.magisk.ui.base.itemBindingOf
-import com.topjohnwu.magisk.utils.observable
+import com.topjohnwu.magisk.utils.set
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -29,14 +29,17 @@ class HideViewModel(
     override val queryDelay = 1000L
 
     @get:Bindable
-    var isShowSystem by observable(false, BR.showSystem) {
-        submitQuery()
-    }
+    var isShowSystem = Config.showSystemApp
+        set(value) = set(value, field, { field = it }, BR.showSystem){
+            Config.showSystemApp = it
+            submitQuery()
+        }
 
     @get:Bindable
-    var query by observable("", BR.query) {
-        submitQuery()
-    }
+    var query = ""
+        set(value) = set(value, field, { field = it }, BR.query){
+            submitQuery()
+        }
 
     val items = filterableListOf<HideItem>()
     val itemBinding = itemBindingOf<HideItem> {
@@ -50,11 +53,11 @@ class HideViewModel(
         state = State.LOADING
         val apps = magiskRepo.fetchApps()
         val hides = magiskRepo.fetchHideTargets()
-        val (hidden, diff) = withContext(Dispatchers.Default) {
-            val hidden = apps.map { mergeAppTargets(it, hides) }.map { HideItem(it) }.sort()
-            hidden to items.calculateDiff(hidden)
+        val (appList, diff) = withContext(Dispatchers.Default) {
+            val list = apps.map { mergeAppTargets(it, hides) }.map { HideItem(it) }.sort()
+            list to items.calculateDiff(list)
         }
-        items.update(hidden, diff)
+        items.update(appList, diff)
         submitQuery()
         state = State.LOADED
     }
@@ -69,7 +72,7 @@ class HideViewModel(
         return ProcessHideApp(a, processes)
     }
 
-    private fun List<HideItem>.sort() = compareByDescending<HideItem> { it.itemsChecked.value }
+    private fun List<HideItem>.sort() = compareByDescending<HideItem> { it.itemsChecked != 0 }
         .thenBy { it.item.info.name.toLowerCase(currentLocale) }
         .thenBy { it.item.info.info.packageName }
         .let { sortedWith(it) }
@@ -77,24 +80,27 @@ class HideViewModel(
     // ---
 
     override fun query() = items.filter {
+        fun showHidden()= it.itemsChecked != 0
+
         fun filterSystem(): Boolean {
             return isShowSystem || it.item.info.info.flags and ApplicationInfo.FLAG_SYSTEM == 0
         }
 
         fun filterQuery(): Boolean {
-            val inName = it.item.info.name.contains(query, true)
-            val inPackage = it.item.info.info.packageName.contains(query, true)
-            val inProcesses = it.item.processes.any { it.name.contains(query, true) }
-            return inName || inPackage || inProcesses
+            fun inName() = it.item.info.name.contains(query, true)
+            fun inPackage() = it.item.info.info.packageName.contains(query, true)
+            fun inProcesses() = it.item.processes.any { it.name.contains(query, true) }
+            return inName() || inPackage() || inProcesses()
         }
 
-        filterSystem() && filterQuery()
+        showHidden() || (filterSystem() && filterQuery())
     }
 
     // ---
 
-    fun toggleItem(item: HideProcessItem) = magiskRepo
-        .toggleHide(item.isHidden.value, item.item.packageName, item.item.name)
+    fun toggleItem(item: HideProcessItem) {
+        magiskRepo.toggleHide(item.isHidden, item.item.packageName, item.item.name)
+    }
 
     fun resetQuery() {
         query = ""
