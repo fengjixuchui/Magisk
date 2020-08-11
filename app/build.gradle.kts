@@ -82,6 +82,7 @@ dependencies {
     implementation(project(":app:signing"))
 
     implementation("com.github.topjohnwu:jtar:1.0.0")
+    implementation("com.github.topjohnwu:indeterminate-checkbox:1.0.7")
     implementation("com.jakewharton.timber:timber:4.7.1")
 
     implementation(kotlin("stdlib"))
@@ -98,7 +99,7 @@ dependencies {
     implementation("io.noties.markwon:image:${vMarkwon}")
     implementation("com.caverock:androidsvg:1.4")
 
-    val vLibsu = "2.5.2"
+    val vLibsu = "3.0.1"
     implementation("com.github.topjohnwu.libsu:core:${vLibsu}")
     implementation("com.github.topjohnwu.libsu:io:${vLibsu}")
 
@@ -134,7 +135,7 @@ dependencies {
     implementation("androidx.navigation:navigation-ui-ktx:${Deps.vNav}")
 
     implementation("androidx.biometric:biometric:1.0.1")
-    implementation("androidx.constraintlayout:constraintlayout:2.0.0-beta8")
+    implementation("androidx.constraintlayout:constraintlayout:2.0.0-rc1")
     implementation("androidx.swiperefreshlayout:swiperefreshlayout:1.1.0")
     implementation("androidx.browser:browser:1.2.0")
     implementation("androidx.preference:preference:1.1.1")
@@ -145,5 +146,5 @@ dependencies {
     implementation("androidx.multidex:multidex:2.0.1")
     implementation("androidx.core:core-ktx:1.3.1")
     implementation("androidx.localbroadcastmanager:localbroadcastmanager:1.0.0")
-    implementation("com.google.android.material:material:1.2.0-rc01")
+    implementation("com.google.android.material:material:1.2.0")
 }

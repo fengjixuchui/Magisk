@@ -10,6 +10,7 @@ import com.topjohnwu.magisk.BR
 import com.topjohnwu.magisk.R
 import com.topjohnwu.magisk.databinding.ObservableItem
 import com.topjohnwu.magisk.utils.TransitiveText
+import com.topjohnwu.magisk.utils.asTransitive
 import com.topjohnwu.magisk.utils.set
 import com.topjohnwu.magisk.view.MagiskDialog
 import org.koin.core.KoinComponent
@@ -17,11 +18,23 @@ import org.koin.core.get
 
 sealed class SettingsItem : ObservableItem<SettingsItem>() {
 
+    override val layoutRes get() = R.layout.item_settings
+
     open val icon: Int get() = 0
     open val title: TransitiveText get() = TransitiveText.EMPTY
-
     @get:Bindable
     open val description: TransitiveText get() = TransitiveText.EMPTY
+
+    // ---
+
+    open val showSwitch get() = false
+
+    @get:Bindable
+    open val isChecked get() = false
+
+    open fun onToggle(view: View, callback: Callback, checked: Boolean) {}
+
+    // ---
 
     @get:Bindable
     var isEnabled = true
@@ -47,7 +60,6 @@ sealed class SettingsItem : ObservableItem<SettingsItem>() {
 
     abstract class Value<T> : SettingsItem() {
 
-        @get:Bindable
         abstract var value: T
 
         protected var callbackVars: Pair<View, Callback>? = null
@@ -63,23 +75,12 @@ sealed class SettingsItem : ObservableItem<SettingsItem>() {
         abstract fun onPressed(view: View)
 
         protected inline fun <reified T> setV(
-            new: T, old: T, setter: (T) -> Unit, vararg fieldIds: Int, afterChanged: (T) -> Unit = {}) {
-            set(new, old, setter, BR.value, *fieldIds) {
-                afterChanged(it)
-                callbackVars?.let { pair ->
-                    callbackVars = null
-                    pair.second.onItemChanged(pair.first, this)
-                }
-            }
-        }
-
-        protected inline fun <reified T> setV(
             new: T, old: T, setter: (T) -> Unit, afterChanged: (T) -> Unit = {}) {
-            set(new, old, setter, BR.value) {
+            set(new, old, setter, BR.value, BR.description, BR.checked) {
                 afterChanged(it)
-                callbackVars?.let { pair ->
+                callbackVars?.let { (view, callback) ->
                     callbackVars = null
-                    pair.second.onItemChanged(pair.first, this)
+                    callback.onItemChanged(view, this)
                 }
             }
         }
@@ -87,29 +88,29 @@ sealed class SettingsItem : ObservableItem<SettingsItem>() {
 
     abstract class Toggle : Value<Boolean>() {
 
-        override val layoutRes = R.layout.item_settings_toggle
+        override val showSwitch get() = true
+        override val isChecked get() = value
+
+        override fun onToggle(view: View, callback: Callback, checked: Boolean) =
+            set(checked, value, { onPressed(view, callback) }, BR.checked)
 
         override fun onPressed(view: View) {
             value = !value
         }
     }
 
-    abstract class Input : Value<String>(), KoinComponent {
+    abstract class Input : Value<String>() {
 
-        override val layoutRes = R.layout.item_settings_input
-        open val showStrip = true
-
-        protected val resources get() = get<Resources>()
-        protected abstract val intermediate: String?
+        protected abstract val inputResult: String?
 
         override fun onPressed(view: View) {
             MagiskDialog(view.context)
-                .applyTitle(title.getText(resources))
+                .applyTitle(title.getText(view.resources))
                 .applyView(getView(view.context))
                 .applyButton(MagiskDialog.ButtonType.POSITIVE) {
                     titleRes = android.R.string.ok
                     onClick {
-                        intermediate?.let { result ->
+                        inputResult?.let { result ->
                             preventDismiss = false
                             value = result
                             it.dismiss()
@@ -125,12 +126,9 @@ sealed class SettingsItem : ObservableItem<SettingsItem>() {
         }
 
         abstract fun getView(context: Context): View
-
     }
 
     abstract class Selector : Value<Int>(), KoinComponent {
-
-        override val layoutRes = R.layout.item_settings_selector
 
         protected val resources get() = get<Resources>()
 
@@ -140,14 +138,8 @@ sealed class SettingsItem : ObservableItem<SettingsItem>() {
         open val entries get() = resources.getArrayOrEmpty(entryRes)
         open val entryValues get() = resources.getArrayOrEmpty(entryValRes)
 
-        @get:Bindable
-        val selectedEntry
-            get() = entries.getOrNull(value)
-
-        protected inline fun <reified T> setS(
-            new: T, old: T, setter: (T) -> Unit, afterChanged: (T) -> Unit = {}) {
-            setV(new, old, setter, BR.selectedEntry, BR.description, afterChanged = afterChanged)
-        }
+        override val description: TransitiveText
+            get() = entries.getOrNull(value)?.asTransitive() ?: TransitiveText.EMPTY
 
         private fun Resources.getArrayOrEmpty(id: Int): Array<String> =
             runCatching { getStringArray(id) }.getOrDefault(emptyArray())
@@ -171,9 +163,7 @@ sealed class SettingsItem : ObservableItem<SettingsItem>() {
 
     }
 
-    abstract class Blank : SettingsItem() {
-        override val layoutRes = R.layout.item_settings_blank
-    }
+    abstract class Blank : SettingsItem()
 
     abstract class Section : SettingsItem() {
         override val layoutRes = R.layout.item_settings_section

@@ -1,9 +1,6 @@
 package com.topjohnwu.magisk.model.entity.recycler
 
 import androidx.databinding.Bindable
-import androidx.databinding.Observable
-import androidx.databinding.ViewDataBinding
-import androidx.recyclerview.widget.StaggeredGridLayoutManager
 import com.topjohnwu.magisk.BR
 import com.topjohnwu.magisk.R
 import com.topjohnwu.magisk.core.model.module.Module
@@ -15,12 +12,6 @@ import com.topjohnwu.magisk.utils.set
 
 object InstallModule : ComparableRvItem<InstallModule>() {
     override val layoutRes = R.layout.item_module_download
-
-    override fun onBindingBound(binding: ViewDataBinding) {
-        super.onBindingBound(binding)
-        val params = binding.root.layoutParams as? StaggeredGridLayoutManager.LayoutParams
-        params?.isFullSpan = true
-    }
 
     override fun contentSameAs(other: InstallModule) = this == other
     override fun itemSameAs(other: InstallModule) = this === other
@@ -45,12 +36,6 @@ class SectionTitle(
     var hasButton = _button != 0 && _icon != 0
         set(value) = set(value, field, { field = it }, BR.hasButton)
 
-    override fun onBindingBound(binding: ViewDataBinding) {
-        super.onBindingBound(binding)
-        val params = binding.root.layoutParams as? StaggeredGridLayoutManager.LayoutParams
-        params?.isFullSpan = true
-    }
-
     override fun itemSameAs(other: SectionTitle): Boolean = this === other
     override fun contentSameAs(other: SectionTitle): Boolean = this === other
 }
@@ -62,24 +47,21 @@ sealed class RepoItem(val item: Repo) : ObservableItem<RepoItem>() {
     var progress = 0
         set(value) = set(value, field, { field = it }, BR.progress)
 
-    @get:Bindable
-    var isUpdate = false
-        set(value) = set(value, field, { field = it }, BR.update)
-
+    abstract val isUpdate: Boolean
 
     override fun contentSameAs(other: RepoItem): Boolean = item == other.item
     override fun itemSameAs(other: RepoItem): Boolean = item.id == other.item.id
 
     class Update(item: Repo) : RepoItem(item) {
-        init {
-            isUpdate = true
-        }
+        override val isUpdate get() = true
     }
 
-    class Remote(item: Repo) : RepoItem(item)
+    class Remote(item: Repo) : RepoItem(item) {
+        override val isUpdate get() = false
+    }
 }
 
-class ModuleItem(val item: Module) : ObservableItem<ModuleItem>(), Observable {
+class ModuleItem(val item: Module) : ObservableItem<ModuleItem>() {
 
     override val layoutRes = R.layout.item_module_md2
 
@@ -88,27 +70,19 @@ class ModuleItem(val item: Module) : ObservableItem<ModuleItem>(), Observable {
         set(value) = set(value, field, { field = it }, BR.repo)
 
     @get:Bindable
-    var isEnabled
-        get() = item.enable
-        set(value) {
+    var isEnabled = item.enable
+        set(value) = set(value, field, { field = it }, BR.enabled) {
             item.enable = value
-            notifyPropertyChanged(BR.enabled)
         }
 
     @get:Bindable
-    var isRemoved
-        get() = item.remove
-        set(value) {
+    var isRemoved = item.remove
+        set(value) = set(value, field, { field = it }, BR.removed) {
             item.remove = value
-            notifyPropertyChanged(BR.removed)
         }
 
     val isUpdated get() = item.updated
     val isModified get() = isRemoved || isUpdated
-
-    fun toggle() {
-        isEnabled = !isEnabled
-    }
 
     fun delete(viewModel: ModuleViewModel) {
         isRemoved = !isRemoved

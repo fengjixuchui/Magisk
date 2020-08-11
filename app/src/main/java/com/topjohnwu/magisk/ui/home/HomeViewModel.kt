@@ -15,9 +15,8 @@ import com.topjohnwu.magisk.data.repository.MagiskRepository
 import com.topjohnwu.magisk.ktx.await
 import com.topjohnwu.magisk.ktx.packageName
 import com.topjohnwu.magisk.ktx.res
+import com.topjohnwu.magisk.model.entity.IconLink
 import com.topjohnwu.magisk.model.entity.internal.DownloadSubject.Manager
-import com.topjohnwu.magisk.model.entity.recycler.DeveloperItem
-import com.topjohnwu.magisk.model.entity.recycler.HomeItem
 import com.topjohnwu.magisk.model.events.ActivityExecutor
 import com.topjohnwu.magisk.model.events.OpenInappLinkEvent
 import com.topjohnwu.magisk.model.events.ViewEvent
@@ -46,7 +45,7 @@ class HomeViewModel(
 
     @get:Bindable
     var stateMagisk = MagiskState.LOADING
-        set(value) = set(value, field, { field = it }, BR.stateMagisk)
+        set(value) = set(value, field, { field = it }, BR.stateMagisk, BR.showUninstall)
 
     @get:Bindable
     var stateManager = MagiskState.LOADING
@@ -73,11 +72,11 @@ class HomeViewModel(
     var stateManagerProgress = 0
         set(value) = set(value, field, { field = it }, BR.stateManagerProgress)
 
-    val items = listOf(DeveloperItem.Mainline, DeveloperItem.App, DeveloperItem.Project)
-    val itemBinding = itemBindingOf<HomeItem> {
-        it.bindExtra(BR.viewModel, this)
-    }
-    val itemDeveloperBinding = itemBindingOf<DeveloperItem> {
+    @get:Bindable
+    val showUninstall get() =
+        Info.env.magiskVersionCode > 0 && stateMagisk != MagiskState.LOADING && isConnected.get()
+
+    val itemBinding = itemBindingOf<IconLink> {
         it.bindExtra(BR.viewModel, this)
     }
 
@@ -92,6 +91,7 @@ class HomeViewModel(
     }
 
     override fun refresh() = viewModelScope.launch {
+        notifyPropertyChanged(BR.showUninstall)
         repoMagisk.fetchUpdate()?.apply {
             stateMagisk = when {
                 !Info.env.isActive -> MagiskState.NOT_INSTALLED
@@ -133,6 +133,9 @@ class HomeViewModel(
     fun onMagiskPressed() = withExternalRW {
         HomeFragmentDirections.actionHomeFragmentToInstallFragment().publish()
     }
+
+    fun onSafetyNetPressed() =
+        HomeFragmentDirections.actionHomeFragmentToSafetynetFragment().publish()
 
     fun hideNotice() {
         Config.safetyNotice = false

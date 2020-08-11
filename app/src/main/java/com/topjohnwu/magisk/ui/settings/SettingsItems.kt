@@ -36,7 +36,7 @@ object Customization : SettingsItem.Section() {
 
 object Language : SettingsItem.Selector() {
     override var value = -1
-        set(value) = setS(value, field, { field = it }) {
+        set(value) = setV(value, field, { field = it }) {
             Config.locale = entryValues[it]
         }
 
@@ -79,15 +79,17 @@ object ClearRepoCache : SettingsItem.Blank() {
 object Hide : SettingsItem.Input() {
     override val title = R.string.settings_hide_manager_title.asTransitive()
     override val description = R.string.settings_hide_manager_summary.asTransitive()
-    override val showStrip = false
-    override var value = resources.getString(R.string.re_app_name)
-        set(value) = setV(value, field, { field = it }, BR.error)
+
+    @get:Bindable
+    override var value = "Manager"
+        set(value) = setV(value, field, { field = it }) {
+            notifyPropertyChanged(BR.error)
+        }
 
     @get:Bindable
     val isError get() = value.length > 14 || value.isBlank()
 
-    override val intermediate: String?
-        get() = if (isError) null else value
+    override val inputResult get() = if (isError) null else value
 
     override fun getView(context: Context) = DialogSettingsAppNameBinding
         .inflate(LayoutInflater.from(context)).also { it.data = this }.root
@@ -105,8 +107,11 @@ fun HideOrRestore() =
 object DownloadPath : SettingsItem.Input() {
     override var value = Config.downloadPath
         set(value) = setV(value, field, { field = it }) { Config.downloadPath = it }
+
     override val title = R.string.settings_download_path_title.asTransitive()
-    override val intermediate: String?
+    override val description get() = path.asTransitive()
+
+    override val inputResult: String?
         get() = if (Utils.ensureDownloadPath(result) != null) result else null
 
     @get:Bindable
@@ -122,7 +127,7 @@ object DownloadPath : SettingsItem.Input() {
 
 object UpdateChannel : SettingsItem.Selector() {
     override var value  = Config.updateChannel
-        set(value) = setS(value, field, { field = it }) { Config.updateChannel = it }
+        set(value) = setV(value, field, { field = it }) { Config.updateChannel = it }
 
     override val title = R.string.settings_update_channel_title.asTransitive()
     override val entries get() = resources.getStringArray(R.array.update_channel).let {
@@ -135,7 +140,9 @@ object UpdateChannelUrl : SettingsItem.Input() {
     override val title = R.string.settings_update_custom.asTransitive()
     override var value = Config.customChannelUrl
         set(value) = setV(value, field, { field = it }) { Config.customChannelUrl = it }
-    override val intermediate: String? get() = result
+    override val description get() = value.asTransitive()
+
+    override val inputResult get() = result
 
     @get:Bindable
     var result = value
@@ -222,7 +229,7 @@ object AccessMode : SettingsItem.Selector() {
     override val entryValRes = R.array.value_array
 
     override var value = Config.rootMode
-        set(value) = setS(value, field, { field = it }) {
+        set(value) = setV(value, field, { field = it }) {
             Config.rootMode = entryValues[it].toInt()
         }
 }
@@ -233,7 +240,7 @@ object MultiuserMode : SettingsItem.Selector() {
     override val entryValRes = R.array.value_array
 
     override var value = Config.suMultiuserMode
-        set(value) = setS(value, field, { field = it }) {
+        set(value) = setV(value, field, { field = it }) {
             Config.suMultiuserMode = entryValues[it].toInt()
         }
 
@@ -251,7 +258,7 @@ object MountNamespaceMode : SettingsItem.Selector() {
     override val entryValRes = R.array.value_array
 
     override var value = Config.suMntNamespaceMode
-        set(value) = setS(value, field, { field = it }) {
+        set(value) = setV(value, field, { field = it }) {
             Config.suMntNamespaceMode = entryValues[it].toInt()
         }
 
@@ -265,7 +272,7 @@ object AutomaticResponse : SettingsItem.Selector() {
     override val entryValRes = R.array.value_array
 
     override var value = Config.suAutoReponse
-        set(value) = setS(value, field, { field = it }) {
+        set(value) = setV(value, field, { field = it }) {
             Config.suAutoReponse = entryValues[it].toInt()
         }
 }
@@ -276,7 +283,7 @@ object RequestTimeout : SettingsItem.Selector() {
     override val entryValRes = R.array.request_timeout_value
 
     override var value = selected
-        set(value) = setS(value, field, { field = it }) {
+        set(value) = setV(value, field, { field = it }) {
             Config.suDefaultTimeout = entryValues[it].toInt()
         }
 
@@ -290,7 +297,7 @@ object SUNotification : SettingsItem.Selector() {
     override val entryValRes = R.array.value_array
 
     override var value = Config.suNotification
-        set(value) = setS(value, field, { field = it }) {
+        set(value) = setV(value, field, { field = it }) {
             Config.suNotification = entryValues[it].toInt()
         }
 }

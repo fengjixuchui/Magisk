@@ -35,18 +35,14 @@ class SuperuserViewModel(
     private val itemNoData = TextItem(R.string.superuser_policy_none)
 
     private val itemsPolicies = diffListOf<PolicyItem>()
-    private val itemsHelpers = ObservableArrayList<TextItem>().also {
-        it.add(itemNoData)
-    }
+    private val itemsHelpers = ObservableArrayList<TextItem>()
 
     val adapter = adapterOf<ComparableRvItem<*>>()
     val items = MergeObservableList<ComparableRvItem<*>>()
         .insertItem(TappableHeadlineItem.Hide)
-        .insertItem(TappableHeadlineItem.Safetynet)
         .insertList(itemsHelpers)
         .insertList(itemsPolicies)
     val itemBinding = itemBindingOf<ComparableRvItem<*>> {
-        it.bindExtra(BR.viewModel, this)
         it.bindExtra(BR.listener, this)
     }
 
@@ -56,7 +52,7 @@ class SuperuserViewModel(
         state = State.LOADING
         val (policies, diff) = withContext(Dispatchers.Default) {
             val policies = db.fetchAll {
-                PolicyItem(it, it.applicationInfo.loadIcon(packageManager))
+                PolicyItem(it, it.applicationInfo.loadIcon(packageManager), this@SuperuserViewModel)
             }.sortedWith(compareBy(
                 { it.item.appName.toLowerCase(currentLocale) },
                 { it.item.packageName }
@@ -64,23 +60,19 @@ class SuperuserViewModel(
             policies to itemsPolicies.calculateDiff(policies)
         }
         itemsPolicies.update(policies, diff)
-        if (itemsPolicies.isNotEmpty()) {
-            itemsHelpers.remove(itemNoData)
-        }
+        if (itemsPolicies.isNotEmpty())
+            itemsHelpers.clear()
+        else if (itemsHelpers.isEmpty())
+            itemsHelpers.add(itemNoData)
         state = State.LOADED
     }
 
     // ---
 
-    @Suppress("REDUNDANT_ELSE_IN_WHEN")
     override fun onItemPressed(item: TappableHeadlineItem) = when (item) {
         TappableHeadlineItem.Hide -> hidePressed()
-        TappableHeadlineItem.Safetynet -> safetynetPressed()
         else -> Unit
     }
-
-    private fun safetynetPressed() =
-        SuperuserFragmentDirections.actionSuperuserFragmentToSafetynetFragment().publish()
 
     private fun hidePressed() =
         SuperuserFragmentDirections.actionSuperuserFragmentToHideFragment().publish()
@@ -125,6 +117,8 @@ class SuperuserViewModel(
 
     fun togglePolicy(item: PolicyItem, enable: Boolean) {
         fun updateState() {
+            item.policyState = enable
+
             val policy = if (enable) MagiskPolicy.ALLOW else MagiskPolicy.DENY
             val app = item.item.copy(policy = policy)
 
@@ -132,14 +126,13 @@ class SuperuserViewModel(
                 db.update(app)
                 val res = if (app.policy == MagiskPolicy.ALLOW) R.string.su_snack_grant
                 else R.string.su_snack_deny
-                SnackbarEvent(resources.getString(res).format(item.item.appName))
+                SnackbarEvent(resources.getString(res).format(item.item.appName)).publish()
             }
         }
 
         if (BiometricHelper.isEnabled) {
             BiometricDialog {
                 onSuccess { updateState() }
-                onFailure { item.isEnabled = !item.isEnabled }
             }.publish()
         } else {
             updateState()

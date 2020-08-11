@@ -2,6 +2,7 @@ package com.topjohnwu.magisk.ui.base
 
 import androidx.databinding.ViewDataBinding
 import com.topjohnwu.magisk.databinding.ComparableRvItem
+import com.topjohnwu.magisk.databinding.RvItem
 import com.topjohnwu.magisk.utils.DiffObservableList
 import com.topjohnwu.magisk.utils.FilterableDiffObservableList
 import me.tatarka.bindingcollectionadapter2.BindingRecyclerViewAdapter
@@ -26,7 +27,7 @@ inline fun <T : ComparableRvItem<*>> filterableListOf(
     override fun areContentsTheSame(oldItem: T, newItem: T) = oldItem.genericContentSameAs(newItem)
 }).also { it.update(newItems.toList()) }
 
-fun <T : ComparableRvItem<*>> adapterOf() = object : BindingRecyclerViewAdapter<T>() {
+fun <T : RvItem> adapterOf() = object : BindingRecyclerViewAdapter<T>() {
     override fun onBindBinding(
         binding: ViewDataBinding,
         variableId: Int,
@@ -39,7 +40,7 @@ fun <T : ComparableRvItem<*>> adapterOf() = object : BindingRecyclerViewAdapter<
     }
 }
 
-inline fun <T : ComparableRvItem<*>> itemBindingOf(
+inline fun <T : RvItem> itemBindingOf(
     crossinline body: (ItemBinding<*>) -> Unit = {}
 ) = OnItemBind<T> { itemBinding, _, item ->
     item.bind(itemBinding)
