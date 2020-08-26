@@ -9,13 +9,14 @@ import android.view.View
 import androidx.core.view.isVisible
 import androidx.recyclerview.widget.RecyclerView
 import com.topjohnwu.magisk.R
+import com.topjohnwu.magisk.arch.BaseUIFragment
+import com.topjohnwu.magisk.arch.ReselectionTarget
+import com.topjohnwu.magisk.arch.ViewEvent
+import com.topjohnwu.magisk.core.download.BaseDownloadService
 import com.topjohnwu.magisk.databinding.FragmentModuleMd2Binding
+import com.topjohnwu.magisk.events.InstallExternalModuleEvent
 import com.topjohnwu.magisk.ktx.hideKeyboard
-import com.topjohnwu.magisk.model.events.InstallExternalModuleEvent
-import com.topjohnwu.magisk.model.events.ViewEvent
 import com.topjohnwu.magisk.ui.MainActivity
-import com.topjohnwu.magisk.ui.base.BaseUIFragment
-import com.topjohnwu.magisk.ui.base.ReselectionTarget
 import com.topjohnwu.magisk.utils.EndlessRecyclerScrollListener
 import com.topjohnwu.magisk.utils.MotionRevealHelper
 import org.koin.androidx.viewmodel.ext.android.viewModel
@@ -50,6 +51,7 @@ class ModuleFragment : BaseUIFragment<ModuleViewModel, FragmentModuleMd2Binding>
         super.onStart()
         setHasOptionsMenu(true)
         activity.title = resources.getString(R.string.modules)
+        BaseDownloadService.observeProgress(this, viewModel::onProgressUpdate)
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {

@@ -5,26 +5,21 @@ import androidx.databinding.Bindable
 import androidx.lifecycle.viewModelScope
 import com.topjohnwu.magisk.BuildConfig
 import com.topjohnwu.magisk.R
+import com.topjohnwu.magisk.arch.*
 import com.topjohnwu.magisk.core.Config
 import com.topjohnwu.magisk.core.Info
-import com.topjohnwu.magisk.core.base.BaseActivity
-import com.topjohnwu.magisk.core.download.RemoteFileService
+import com.topjohnwu.magisk.core.download.Subject
+import com.topjohnwu.magisk.core.download.Subject.Manager
 import com.topjohnwu.magisk.core.model.MagiskJson
 import com.topjohnwu.magisk.core.model.ManagerJson
 import com.topjohnwu.magisk.data.repository.MagiskRepository
+import com.topjohnwu.magisk.events.OpenInappLinkEvent
+import com.topjohnwu.magisk.events.dialog.EnvFixDialog
+import com.topjohnwu.magisk.events.dialog.ManagerInstallDialog
+import com.topjohnwu.magisk.events.dialog.UninstallDialog
 import com.topjohnwu.magisk.ktx.await
 import com.topjohnwu.magisk.ktx.packageName
 import com.topjohnwu.magisk.ktx.res
-import com.topjohnwu.magisk.model.entity.IconLink
-import com.topjohnwu.magisk.model.entity.internal.DownloadSubject.Manager
-import com.topjohnwu.magisk.model.events.ActivityExecutor
-import com.topjohnwu.magisk.model.events.OpenInappLinkEvent
-import com.topjohnwu.magisk.model.events.ViewEvent
-import com.topjohnwu.magisk.model.events.dialog.EnvFixDialog
-import com.topjohnwu.magisk.model.events.dialog.ManagerInstallDialog
-import com.topjohnwu.magisk.model.events.dialog.UninstallDialog
-import com.topjohnwu.magisk.ui.base.BaseViewModel
-import com.topjohnwu.magisk.ui.base.itemBindingOf
 import com.topjohnwu.magisk.utils.set
 import com.topjohnwu.superuser.Shell
 import kotlinx.coroutines.launch
@@ -82,14 +77,6 @@ class HomeViewModel(
 
     private var shownDialog = false
 
-    init {
-        RemoteFileService.progressBroadcast.observeForever {
-            when (it?.second) {
-                is Manager -> stateManagerProgress = it.first.times(100f).roundToInt()
-            }
-        }
-    }
-
     override fun refresh() = viewModelScope.launch {
         notifyPropertyChanged(BR.showUninstall)
         repoMagisk.fetchUpdate()?.apply {
@@ -119,10 +106,16 @@ class HomeViewModel(
     val showTest = false
 
     fun onTestPressed() = object : ViewEvent(), ActivityExecutor {
-        override fun invoke(activity: BaseActivity) {
+        override fun invoke(activity: BaseUIActivity<*, *>) {
             /* Entry point to trigger test events within the app */
         }
     }.publish()
+
+    fun onProgressUpdate(progress: Float, subject: Subject) {
+        when (subject) {
+            is Manager -> stateManagerProgress = progress.times(100f).roundToInt()
+        }
+    }
 
     fun onLinkPressed(link: String) = OpenInappLinkEvent(link).publish()
 

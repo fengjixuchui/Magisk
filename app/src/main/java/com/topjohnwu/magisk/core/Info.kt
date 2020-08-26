@@ -3,9 +3,9 @@ package com.topjohnwu.magisk.core
 import androidx.databinding.ObservableBoolean
 import com.topjohnwu.magisk.DynAPK
 import com.topjohnwu.magisk.core.model.UpdateInfo
-import com.topjohnwu.magisk.core.net.NetworkObserver
 import com.topjohnwu.magisk.ktx.get
 import com.topjohnwu.magisk.utils.CachedValue
+import com.topjohnwu.magisk.utils.net.NetworkObserver
 import com.topjohnwu.superuser.Shell
 import com.topjohnwu.superuser.ShellUtils.fastCmd
 import com.topjohnwu.superuser.internal.UiThreadHandler
@@ -18,18 +18,18 @@ object Info {
 
     val envRef = CachedValue { loadState() }
 
-    @JvmStatic val env by envRef              // Local
-    @JvmStatic var stub: DynAPK.Data? = null  // Stub
-    var remote = UpdateInfo()      // Remote
+    @JvmStatic val env by envRef
 
-    // Toggle-able options
-    @JvmStatic var keepVerity = false
-    @JvmStatic var keepEnc = false
-    @JvmStatic var recovery = false
+    var stub: DynAPK.Data? = null
+    val stubChk: DynAPK.Data
+        get() = stub as DynAPK.Data
 
-    // Immutable device state
+    var remote = UpdateInfo()
+
+    // Device state
     @JvmStatic var isSAR = false
     @JvmStatic var isAB = false
+    @JvmStatic var isFBE = false
     @JvmStatic var ramdisk = false
     @JvmStatic var hasGMS = true
 

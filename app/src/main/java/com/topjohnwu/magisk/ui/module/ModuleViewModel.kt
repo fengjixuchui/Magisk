@@ -2,28 +2,22 @@ package com.topjohnwu.magisk.ui.module
 
 import androidx.databinding.Bindable
 import androidx.databinding.ObservableArrayList
-import androidx.lifecycle.Observer
 import androidx.lifecycle.viewModelScope
 import com.topjohnwu.magisk.BR
 import com.topjohnwu.magisk.R
+import com.topjohnwu.magisk.arch.*
 import com.topjohnwu.magisk.core.Config
-import com.topjohnwu.magisk.core.download.RemoteFileService
+import com.topjohnwu.magisk.core.download.Subject
 import com.topjohnwu.magisk.core.model.module.Module
 import com.topjohnwu.magisk.core.tasks.RepoUpdater
 import com.topjohnwu.magisk.data.database.RepoByNameDao
 import com.topjohnwu.magisk.data.database.RepoByUpdatedDao
 import com.topjohnwu.magisk.databinding.RvItem
+import com.topjohnwu.magisk.events.InstallExternalModuleEvent
+import com.topjohnwu.magisk.events.OpenChangelogEvent
+import com.topjohnwu.magisk.events.dialog.ModuleInstallDialog
 import com.topjohnwu.magisk.ktx.addOnListChangedCallback
 import com.topjohnwu.magisk.ktx.reboot
-import com.topjohnwu.magisk.model.entity.internal.DownloadSubject
-import com.topjohnwu.magisk.model.entity.recycler.InstallModule
-import com.topjohnwu.magisk.model.entity.recycler.ModuleItem
-import com.topjohnwu.magisk.model.entity.recycler.RepoItem
-import com.topjohnwu.magisk.model.entity.recycler.SectionTitle
-import com.topjohnwu.magisk.model.events.InstallExternalModuleEvent
-import com.topjohnwu.magisk.model.events.OpenChangelogEvent
-import com.topjohnwu.magisk.model.events.dialog.ModuleInstallDialog
-import com.topjohnwu.magisk.ui.base.*
 import com.topjohnwu.magisk.utils.EndlessRecyclerScrollListener
 import com.topjohnwu.magisk.utils.set
 import kotlinx.coroutines.Dispatchers
@@ -51,7 +45,7 @@ class ModuleViewModel(
     private val repoName: RepoByNameDao,
     private val repoUpdated: RepoByUpdatedDao,
     private val repoUpdater: RepoUpdater
-) : BaseViewModel(), Queryable, Observer<Pair<Float, DownloadSubject>> {
+) : BaseViewModel(), Queryable {
 
     override val queryDelay = 1000L
     private var queryJob: Job? = null
@@ -129,9 +123,6 @@ class ModuleViewModel(
     // ---
 
     init {
-        RemoteFileService.reset()
-        RemoteFileService.progressBroadcast.observeForever(this)
-
         itemsInstalled.addOnListChangedCallback(
             onItemRangeInserted = { _, _, _ ->
                 if (installSectionList.isEmpty())
@@ -156,14 +147,8 @@ class ModuleViewModel(
 
     // ---
 
-    override fun onCleared() {
-        super.onCleared()
-        RemoteFileService.progressBroadcast.removeObserver(this)
-    }
-
-    override fun onChanged(it: Pair<Float, DownloadSubject>?) {
-        val (progress, subject) = it ?: return
-        if (subject !is DownloadSubject.Module)
+    fun onProgressUpdate(progress: Float, subject: Subject) {
+        if (subject !is Subject.Module)
             return
 
         viewModelScope.launch {

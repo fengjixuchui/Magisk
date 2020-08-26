@@ -5,11 +5,11 @@ import android.content.Context
 import android.os.Bundle
 import com.topjohnwu.magisk.BuildConfig
 import com.topjohnwu.magisk.R
-import com.topjohnwu.magisk.core.view.Notifications
-import com.topjohnwu.magisk.core.view.Shortcuts
 import com.topjohnwu.magisk.data.network.GithubRawServices
 import com.topjohnwu.magisk.ktx.get
-import com.topjohnwu.magisk.model.navigation.Navigation
+import com.topjohnwu.magisk.ui.MainActivity
+import com.topjohnwu.magisk.view.Notifications
+import com.topjohnwu.magisk.view.Shortcuts
 import com.topjohnwu.superuser.Shell
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
@@ -52,18 +52,18 @@ open class SplashActivity : Activity() {
         handleRepackage()
         Notifications.setup(this)
         UpdateCheckService.schedule(this)
-        Shortcuts.setup(this)
+        Shortcuts.setupDynamic(this)
 
         // Pre-fetch network stuffs
         get<GithubRawServices>()
 
         DONE = true
-        Navigation.start(intent, this)
+
+        redirect<MainActivity>().also { startActivity(it) }
         finish()
     }
 
     companion object {
-
         var DONE = false
     }
 }

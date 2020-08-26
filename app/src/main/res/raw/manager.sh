@@ -2,6 +2,10 @@
 # Magisk Manager internal scripts
 ##################################
 
+run_delay() {
+  (sleep $1; $2)&
+}
+
 env_check() {
   for file in busybox magisk magiskboot magiskinit util_functions.sh boot_patch.sh; do
     [ -f $MAGISKBIN/$file ] || return 1
@@ -83,6 +87,16 @@ EOF
   magisk --clone /system/etc/hosts hosts/system/etc/hosts
   touch hosts/update
   cd /
+}
+
+adb_pm_install() {
+  local tmp=/data/local/tmp/patched.apk
+  cp -f "$1" $tmp
+  chmod 644 $tmp
+  su 2000 -c pm install $tmp
+  local res=$?
+  rm -f $tmp
+  return $res
 }
 
 check_boot_ramdisk() {

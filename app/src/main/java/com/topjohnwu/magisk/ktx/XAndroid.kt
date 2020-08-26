@@ -21,7 +21,6 @@ import android.graphics.drawable.LayerDrawable
 import android.net.Uri
 import android.os.Build
 import android.os.Build.VERSION.SDK_INT
-import android.provider.OpenableColumns
 import android.text.PrecomputedText
 import android.view.View
 import android.view.ViewGroup
@@ -33,7 +32,6 @@ import androidx.annotation.DrawableRes
 import androidx.appcompat.content.res.AppCompatResources
 import androidx.core.content.ContextCompat
 import androidx.core.content.getSystemService
-import androidx.core.net.toFile
 import androidx.core.net.toUri
 import androidx.core.text.PrecomputedTextCompat
 import androidx.core.view.isGone
@@ -43,20 +41,18 @@ import androidx.fragment.app.Fragment
 import androidx.interpolator.view.animation.FastOutSlowInInterpolator
 import androidx.transition.AutoTransition
 import androidx.transition.TransitionManager
-import com.topjohnwu.magisk.FileProvider
 import com.topjohnwu.magisk.R
 import com.topjohnwu.magisk.core.Const
 import com.topjohnwu.magisk.core.ResMgr
-import com.topjohnwu.magisk.core.utils.Utils
 import com.topjohnwu.magisk.core.utils.currentLocale
 import com.topjohnwu.magisk.utils.DynamicClassLoader
+import com.topjohnwu.magisk.utils.Utils
 import com.topjohnwu.superuser.Shell
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
 import java.io.File
-import java.io.FileNotFoundException
 import java.lang.reflect.Array as JArray
 
 val packageName: String get() = get<Context>().packageName
@@ -69,62 +65,24 @@ val PackageInfo.processes
 
 val Array<out ComponentInfo>.processNames get() = mapNotNull { it.processName }
 
-val ApplicationInfo.packageInfo: PackageInfo?
-    get() {
-        val pm: PackageManager by inject()
+val ApplicationInfo.packageInfo: PackageInfo get() {
+    val pm = get<PackageManager>()
 
-        return try {
-            val request = GET_ACTIVITIES or
-                    GET_SERVICES or
-                    GET_RECEIVERS or
-                    GET_PROVIDERS
-            pm.getPackageInfo(packageName, request)
-        } catch (e1: Exception) {
-            try {
-                pm.activities(packageName).apply {
-                    services = pm.services(packageName)
-                    receivers = pm.receivers(packageName)
-                    providers = pm.providers(packageName)
-                }
-            } catch (e2: Exception) {
-                null
-            }
+    return try {
+        val request = GET_ACTIVITIES or GET_SERVICES or GET_RECEIVERS or GET_PROVIDERS
+        pm.getPackageInfo(packageName, request)
+    } catch (e: Exception) {
+        // Exceed binder data transfer limit, fetch each component type separately
+        pm.getPackageInfo(packageName, 0).apply {
+            runCatching { activities = pm.getPackageInfo(packageName, GET_ACTIVITIES).activities }
+            runCatching { services = pm.getPackageInfo(packageName, GET_SERVICES).services }
+            runCatching { receivers = pm.getPackageInfo(packageName, GET_RECEIVERS).receivers }
+            runCatching { providers = pm.getPackageInfo(packageName, GET_PROVIDERS).providers }
         }
     }
-
-val Uri.fileName: String
-    get() {
-        var name: String? = null
-        get<Context>().contentResolver.query(this, null, null, null, null)?.use { c ->
-            val nameIndex = c.getColumnIndex(OpenableColumns.DISPLAY_NAME)
-            if (nameIndex != -1) {
-                c.moveToFirst()
-                name = c.getString(nameIndex)
-            }
-        }
-        if (name == null && path != null) {
-            val idx = path!!.lastIndexOf('/')
-            name = path!!.substring(idx + 1)
-        }
-        return name.orEmpty()
-    }
-
-fun PackageManager.activities(packageName: String) =
-    getPackageInfo(packageName, GET_ACTIVITIES)
-
-fun PackageManager.services(packageName: String) =
-    getPackageInfo(packageName, GET_SERVICES).services
-
-fun PackageManager.receivers(packageName: String) =
-    getPackageInfo(packageName, GET_RECEIVERS).receivers
-
-fun PackageManager.providers(packageName: String) =
-    getPackageInfo(packageName, GET_PROVIDERS).providers
+}
 
 fun Context.rawResource(id: Int) = resources.openRawResource(id)
-
-fun Context.readUri(uri: Uri) =
-    contentResolver.openInputStream(uri) ?: throw FileNotFoundException()
 
 fun Context.getBitmap(id: Int): Bitmap {
     var drawable = AppCompatResources.getDrawable(this, id)!!
@@ -249,17 +207,6 @@ fun Intent.toCommand(args: MutableList<String> = mutableListOf()): MutableList<S
     return args
 }
 
-fun File.provide(context: Context = get()): Uri {
-    return FileProvider.getUriForFile(context, context.packageName + ".provider", this)
-}
-
-fun File.mv(destination: File) {
-    inputStream().writeTo(destination)
-    deleteRecursively()
-}
-
-fun String.toFile() = File(this)
-
 fun Intent.chooser(title: String = "Pick an app") = Intent.createChooser(this, title)
 
 fun Context.cachedFile(name: String) = File(cacheDir, name)
@@ -329,8 +276,6 @@ fun Context.unwrap(): Context {
     return context
 }
 
-fun Uri.writeTo(file: File) = toFile().copyTo(file)
-
 fun Context.hasPermissions(vararg permissions: String) = permissions.all {
     ContextCompat.checkSelfPermission(this, it) == PERMISSION_GRANTED
 }
@@ -359,7 +304,9 @@ fun View.addOnGlobalLayoutListener(oneShot: Boolean = false, callback: () -> Uni
 
 fun ViewGroup.startAnimations() {
     val transition = AutoTransition()
-        .setInterpolator(FastOutSlowInInterpolator()).setDuration(400)
+        .setInterpolator(FastOutSlowInInterpolator())
+        .setDuration(400)
+        .excludeTarget(R.id.main_toolbar, true)
     TransitionManager.beginDelayedTransition(
         this,
         transition
