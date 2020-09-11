@@ -4,7 +4,7 @@ import android.os.Bundle
 import android.view.*
 import com.topjohnwu.magisk.R
 import com.topjohnwu.magisk.arch.BaseUIFragment
-import com.topjohnwu.magisk.core.download.BaseDownloadService
+import com.topjohnwu.magisk.core.download.BaseDownloader
 import com.topjohnwu.magisk.databinding.FragmentHomeMd2Binding
 import com.topjohnwu.magisk.events.RebootEvent
 import com.topjohnwu.superuser.Shell
@@ -19,7 +19,7 @@ class HomeFragment : BaseUIFragment<HomeViewModel, FragmentHomeMd2Binding>() {
         super.onStart()
         activity.title = resources.getString(R.string.section_home)
         setHasOptionsMenu(true)
-        BaseDownloadService.observeProgress(this, viewModel::onProgressUpdate)
+        BaseDownloader.observeProgress(this, viewModel::onProgressUpdate)
     }
 
     override fun onCreateView(
@@ -33,7 +33,7 @@ class HomeFragment : BaseUIFragment<HomeViewModel, FragmentHomeMd2Binding>() {
         binding.homeMagiskWrapper.homeMagiskTitleBarrier.referencedIds =
             intArrayOf(R.id.home_magisk_action, R.id.home_magisk_title, R.id.home_magisk_icon)
         binding.homeMagiskWrapper.homeMagiskBarrier.referencedIds =
-            intArrayOf(R.id.home_magisk_latest_version, R.id.home_magisk_installed_version, R.id.home_magisk_mode)
+            intArrayOf(R.id.home_magisk_latest_version, R.id.home_magisk_installed_version)
         binding.homeManagerWrapper.homeManagerTitleBarrier.referencedIds =
             intArrayOf(R.id.home_manager_action, R.id.home_manager_title, R.id.home_manager_icon)
 
