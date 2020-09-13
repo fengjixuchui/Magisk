@@ -52,18 +52,13 @@ class SettingsViewModel(
             Customization,
             Theme, Language
         )
-        if (Build.VERSION.SDK_INT < 21) {
-            // Pre 5.0 does not support getting colors from attributes,
-            // making theming a pain in the ass. Just forget about it
-            list.remove(Theme)
-        }
         if (isRunningAsStub && ShortcutManagerCompat.isRequestPinShortcutSupported(context))
             list.add(AddShortcut)
 
         // Manager
         list.addAll(listOf(
             Manager,
-            UpdateChannel, UpdateChannelUrl, UpdateChecker, DownloadPath
+            UpdateChannel, UpdateChannelUrl, DoHToggle, UpdateChecker, DownloadPath
         ))
         if (Info.env.isActive) {
             list.add(ClearRepoCache)
@@ -77,6 +72,10 @@ class SettingsViewModel(
                 Magisk,
                 MagiskHide, SystemlessHosts
             ))
+            if (Build.VERSION.SDK_INT < 19) {
+                // MagiskHide is only available on 4.4+
+                list.remove(MagiskHide)
+            }
         }
 
         // Superuser
