@@ -213,7 +213,7 @@
                             <RadioButton
                                 android:id="@+id/method_inactive_slot"
                                 style="@style/WidgetFoundation.RadioButton"
-                                gone="@{!viewModel.isRooted || !Info.isAB}"
+                                gone="@{!viewModel.isRooted || Info.isPixel || !Info.isAB}"
                                 android:layout_width="match_parent"
                                 android:layout_height="wrap_content"
                                 android:text="@string/install_inactive_slot" />
@@ -228,6 +228,7 @@
                     style="@style/WidgetFoundation.Card"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
+                    android:layout_marginTop="@dimen/l1"
                     android:layout_marginStart="@dimen/l1"
                     android:layout_marginEnd="@dimen/l1"
                     android:focusable="false">
@@ -262,7 +263,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:gravity="center"
-                    android:text="@string/safetynet_attest_loading"
+                    android:text="@string/loading"
                     android:textAppearance="@style/AppearanceFoundation.Title" />
 
                 <FrameLayout

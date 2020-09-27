@@ -14,6 +14,7 @@ import com.topjohnwu.magisk.ktx.get
 import com.topjohnwu.magisk.ktx.packageInfo
 import com.topjohnwu.magisk.ktx.packageName
 import com.topjohnwu.magisk.ktx.processes
+import com.topjohnwu.magisk.utils.Utils
 import com.topjohnwu.magisk.utils.set
 import com.topjohnwu.superuser.Shell
 import kotlinx.coroutines.Dispatchers
@@ -46,13 +47,17 @@ class HideViewModel : BaseViewModel(), Queryable {
     }
 
     override fun refresh() = viewModelScope.launch {
+        if (!Utils.showSuperUser()) {
+            state = State.LOADING_FAILED
+            return@launch
+        }
         state = State.LOADING
         val (apps, diff) = withContext(Dispatchers.Default) {
             val pm = get<PackageManager>()
             val hides = Shell.su("magiskhide --ls").exec().out.map { HideTarget(it) }
             val apps = pm.getInstalledApplications(0)
                 .asSequence()
-                .filter { it.enabled && !blacklist.contains(it.packageName) }
+                .filter { it.enabled && it.uid >= 10000 && !blacklist.contains(it.packageName) }
                 .map { HideAppInfo(it, pm) }
                 .map { createTarget(it, hides) }
                 .filter { it.processes.isNotEmpty() }
@@ -107,7 +112,6 @@ class HideViewModel : BaseViewModel(), Queryable {
     companion object {
         private val blacklist by lazy { listOf(
             packageName,
-            "android",
             "com.android.chrome",
             "com.chrome.beta",
             "com.chrome.dev",

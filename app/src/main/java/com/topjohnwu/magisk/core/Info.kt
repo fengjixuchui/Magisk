@@ -29,9 +29,11 @@ object Info {
     // Device state
     @JvmStatic var isSAR = false
     @JvmStatic var isAB = false
-    @JvmStatic var isFBE = false
+    @JvmStatic val isFBE get() = crypto == "file"
     @JvmStatic var ramdisk = false
     @JvmStatic var hasGMS = true
+    @JvmStatic var crypto = ""
+    @JvmStatic var isPixel = false
 
     val isConnected by lazy {
         ObservableBoolean(false).also { field ->
