@@ -102,6 +102,7 @@
 
     <!-- MagiskHide -->
     <string name="show_system_app">Show system apps</string>
+    <string name="show_os_app">Show OS apps</string>
     <string name="hide_filter_hint">Filter by name</string>
     <string name="hide_scroll_up">Scroll up</string>
     <string name="hide_filters">Filters</string>
@@ -109,6 +110,7 @@
 
     <!--Module -->
     <string name="no_info_provided">(No info provided)</string>
+    <string name="reboot_userspace">Soft reboot</string>
     <string name="reboot_recovery">Reboot to Recovery</string>
     <string name="reboot_bootloader">Reboot to Bootloader</string>
     <string name="reboot_download">Reboot to Download</string>
@@ -217,7 +219,8 @@
     <string name="done">Done!</string>
     <string name="failure">Failed</string>
     <string name="hide_manager_title">Hiding Magisk Manager…</string>
-    <string name="hide_manager_fail_toast">Hide Magisk Manager failed.</string>
+    <string name="hide_manager_fail_toast">Hide Magisk Manager failed</string>
+    <string name="restore_manager_fail_toast">Restore Magisk Manager failed</string>
     <string name="open_link_failed_toast">No application found to open the link</string>
     <string name="complete_uninstall">Complete Uninstall</string>
     <string name="restore_img">Restore Images</string>

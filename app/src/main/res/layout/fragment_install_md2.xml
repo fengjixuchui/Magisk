@@ -105,7 +105,7 @@
 
                             <CheckBox
                                 style="@style/WidgetFoundation.Checkbox"
-                                gone="@{Info.isFBE}"
+                                goneUnless="@{Info.isFDE}"
                                 android:layout_width="match_parent"
                                 android:layout_height="wrap_content"
                                 android:checked="@={Config.keepEnc}"
@@ -302,6 +302,23 @@
                     android:layout_height="wrap_content"
                     android:gravity="center"
                     android:text="@string/download_complete"
+                    android:textAppearance="@style/AppearanceFoundation.Title" />
+
+            </LinearLayout>
+
+            <LinearLayout
+                goneUnless="@{viewModel.loadFailed}"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                android:gravity="center"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center"
+                    android:text="@string/download_file_error"
                     android:textAppearance="@style/AppearanceFoundation.Title" />
 
             </LinearLayout>

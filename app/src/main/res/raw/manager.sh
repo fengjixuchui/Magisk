@@ -90,7 +90,7 @@ EOF
 }
 
 adb_pm_install() {
-  local tmp=/data/local/tmp/patched.apk
+  local tmp=/data/local/tmp/temp.apk
   cp -f "$1" $tmp
   chmod 644 $tmp
   su 2000 -c pm install $tmp || pm install $tmp
@@ -123,8 +123,6 @@ check_encryption() {
   if $ISENCRYPTED; then
     if [ $SDK_INT -lt 24 ]; then
       CRYPTOTYPE="block"
-    elif [ -d /data/unencrypted ]; then
-      CRYPTOTYPE="file"
     else
       # First see what the system tells us
       CRYPTOTYPE=$(getprop ro.crypto.type)

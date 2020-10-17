@@ -1,5 +1,6 @@
 package com.topjohnwu.magisk.ui.install
 
+import android.app.Activity
 import android.net.Uri
 import androidx.databinding.Bindable
 import androidx.lifecycle.viewModelScope
@@ -10,8 +11,8 @@ import com.topjohnwu.magisk.core.Info
 import com.topjohnwu.magisk.core.download.Action
 import com.topjohnwu.magisk.core.download.DownloadService
 import com.topjohnwu.magisk.core.download.Subject
-import com.topjohnwu.magisk.data.repository.StringRepository
-import com.topjohnwu.magisk.events.RequestFileEvent
+import com.topjohnwu.magisk.data.repository.NetworkService
+import com.topjohnwu.magisk.events.MagiskInstallFileEvent
 import com.topjohnwu.magisk.events.dialog.SecondSlotWarningDialog
 import com.topjohnwu.magisk.utils.set
 import com.topjohnwu.superuser.Shell
@@ -20,22 +21,28 @@ import org.koin.core.get
 import kotlin.math.roundToInt
 
 class InstallViewModel(
-    stringRepo: StringRepository
+    svc: NetworkService
 ) : BaseViewModel(State.LOADED) {
 
     val isRooted = Shell.rootAccess()
-    val skipOptions = Info.ramdisk && Info.isFBE && Info.isSAR
+    val skipOptions = Info.ramdisk && !Info.isFDE && Info.isSAR
 
     @get:Bindable
     var step = if (skipOptions) 1 else 0
         set(value) = set(value, field, { field = it }, BR.step)
 
+    var _method = -1
+
     @get:Bindable
-    var method = -1
-        set(value) = set(value, field, { field = it }, BR.method) {
+    var method
+        get() = _method
+        set(value) = set(value, _method, { _method = it }, BR.method) {
             when (it) {
                 R.id.method_patch -> {
-                    RequestFileEvent().publish()
+                    MagiskInstallFileEvent { code, intent ->
+                        if (code == Activity.RESULT_OK)
+                            data = intent?.data
+                    }.publish()
                 }
                 R.id.method_inactive_slot -> {
                     SecondSlotWarningDialog().publish()
@@ -57,7 +64,7 @@ class InstallViewModel(
 
     init {
         viewModelScope.launch {
-            notes = stringRepo.getString(Info.remote.magisk.note)
+            notes = svc.fetchString(Info.remote.magisk.note)
         }
     }
 
@@ -68,6 +75,8 @@ class InstallViewModel(
         this.progress = progress.times(100).roundToInt()
         if (this.progress >= 100) {
             state = State.LOADED
+        } else if (this.progress < -150) {
+            state = State.LOADING_FAILED
         }
     }
 
