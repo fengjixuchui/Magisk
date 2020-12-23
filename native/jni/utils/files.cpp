@@ -45,18 +45,20 @@ int mkdirs(string path, mode_t mode) {
 	return 0;
 }
 
-static void post_order_walk(int dirfd, const function<void(int, dirent *)> &&fn) {
+template <typename Func>
+static void post_order_walk(int dirfd, const Func &fn) {
 	auto dir = xopen_dir(dirfd);
 	if (!dir) return;
 
 	for (dirent *entry; (entry = xreaddir(dir.get()));) {
 		if (entry->d_type == DT_DIR)
-			post_order_walk(xopenat(dirfd, entry->d_name, O_RDONLY | O_CLOEXEC), std::move(fn));
+			post_order_walk(xopenat(dirfd, entry->d_name, O_RDONLY | O_CLOEXEC), fn);
 		fn(dirfd, entry);
 	}
 }
 
-static void pre_order_walk(int dirfd, const function<bool(int, dirent *)> &&fn) {
+template <typename Func>
+static void pre_order_walk(int dirfd, const Func &fn) {
 	auto dir = xopen_dir(dirfd);
 	if (!dir) return;
 
@@ -64,7 +66,7 @@ static void pre_order_walk(int dirfd, const function<bool(int, dirent *)> &&fn) 
 		if (!fn(dirfd, entry))
 			continue;
 		if (entry->d_type == DT_DIR)
-			pre_order_walk(xopenat(dirfd, entry->d_name, O_RDONLY | O_CLOEXEC), std::move(fn));
+			pre_order_walk(xopenat(dirfd, entry->d_name, O_RDONLY | O_CLOEXEC), fn);
 	}
 }
 
@@ -271,10 +273,17 @@ void fclone_attr(int src, int dest) {
 }
 
 void *__mmap(const char *filename, size_t *size, bool rw) {
+	int fd = xopen(filename, (rw ? O_RDWR : O_RDONLY) | O_CLOEXEC);
+	if (fd < 0) {
+		*size = 0;
+		return nullptr;
+	}
 	struct stat st;
 	void *buf;
-	int fd = xopen(filename, (rw ? O_RDWR : O_RDONLY) | O_CLOEXEC);
-	fstat(fd, &st);
+	if (fstat(fd, &st)) {
+		*size = 0;
+		return nullptr;
+	}
 	if (S_ISBLK(st.st_mode))
 		ioctl(fd, BLKGETSIZE64, size);
 	else
@@ -338,7 +347,7 @@ void file_readline(bool trim, const char *file, const function<bool(string_view)
 	while ((read = getline(&buf, &len, fp)) >= 0) {
 		start = buf;
 		if (trim) {
-			while (read && (buf[read - 1] == '\n' || buf[read - 1] == ' '))
+			while (read && "\n\r "sv.find(buf[read - 1]) != string::npos)
 				--read;
 			buf[read] = '\0';
 			while (*start == ' ')
@@ -351,7 +360,7 @@ void file_readline(bool trim, const char *file, const function<bool(string_view)
 	free(buf);
 }
 
-void parse_prop_file(const char *file, const function<bool(string_view, string_view)> &&fn) {
+void parse_prop_file(const char *file, const function<bool(string_view, string_view)> &fn) {
 	file_readline(true, file, [&](string_view line_view) -> bool {
 		char *line = (char *) line_view.data();
 		if (line[0] == '#')
@@ -419,4 +428,12 @@ void restore_folder(const char *dir, vector<raw_file> &files) {
 		}
 		setattr(path.data(), &file.attr);
 	}
+}
+
+sDIR make_dir(DIR *dp) {
+	return sDIR(dp, [](DIR *dp){ return dp ? closedir(dp) : 1; });
+}
+
+sFILE make_file(FILE *fp) {
+	return sFILE(fp, [](FILE *fp){ return fp ? fclose(fp) : 1; });
 }

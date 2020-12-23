@@ -20,6 +20,7 @@ import com.topjohnwu.magisk.databinding.DialogSettingsAppNameBinding
 import com.topjohnwu.magisk.databinding.DialogSettingsDownloadPathBinding
 import com.topjohnwu.magisk.databinding.DialogSettingsUpdateChannelBinding
 import com.topjohnwu.magisk.ktx.get
+import com.topjohnwu.magisk.utils.TransitiveText
 import com.topjohnwu.magisk.utils.Utils
 import com.topjohnwu.magisk.utils.asTransitive
 import com.topjohnwu.magisk.utils.set
@@ -99,11 +100,17 @@ object Hide : BaseSettingsItem.Input() {
     override fun getView(context: Context) = DialogSettingsAppNameBinding
         .inflate(LayoutInflater.from(context)).also { it.data = this }.root
 
+    override fun refresh() {
+        isEnabled = Info.remote.stub.versionCode > 0
+    }
 }
 
 object Restore : BaseSettingsItem.Blank() {
     override val title = R.string.settings_restore_manager_title.asTransitive()
     override val description = R.string.settings_restore_manager_summary.asTransitive()
+    override fun refresh() {
+        isEnabled = Info.remote.app.versionCode > 0
+    }
 }
 
 object AddShortcut : BaseSettingsItem.Blank() {
@@ -137,11 +144,12 @@ object UpdateChannel : BaseSettingsItem.Selector() {
         set(value) = setV(value, field, { field = it }) { Config.updateChannel = it }
 
     override val title = R.string.settings_update_channel_title.asTransitive()
-    override val entries
-        get() = resources.getStringArray(R.array.update_channel).let {
-            if (BuildConfig.DEBUG) it.toMutableList().apply { add("Canary") }.toTypedArray() else it
-        }
-    override val entryValRes = R.array.value_array
+    override val entries: Array<String> = resources.getStringArray(R.array.update_channel).let {
+        if (BuildConfig.DEBUG) it.toMutableList().apply { add("Canary") }.toTypedArray() else it
+    }
+    override val description
+        get() = entries.getOrNull(value)?.asTransitive()
+            ?: TransitiveText.String(if (value == -1) entries[0] else "Canary")
 }
 
 object UpdateChannelUrl : BaseSettingsItem.Input() {
@@ -187,6 +195,13 @@ object DoHToggle : BaseSettingsItem.Toggle() {
 object SystemlessHosts : BaseSettingsItem.Blank() {
     override val title = R.string.settings_hosts_title.asTransitive()
     override val description = R.string.settings_hosts_summary.asTransitive()
+}
+
+object Tapjack : BaseSettingsItem.Toggle() {
+    override val title = R.string.settings_su_tapjack_title.asTransitive()
+    override var description = R.string.settings_su_tapjack_summary.asTransitive()
+    override var value = Config.suTapjack
+        set(value) = setV(value, field, { field = it }) { Config.suTapjack = it }
 }
 
 object Biometrics : BaseSettingsItem.Toggle() {
@@ -243,22 +258,20 @@ object Superuser : BaseSettingsItem.Section() {
 object AccessMode : BaseSettingsItem.Selector() {
     override val title = R.string.superuser_access.asTransitive()
     override val entryRes = R.array.su_access
-    override val entryValRes = R.array.value_array
 
     override var value = Config.rootMode
         set(value) = setV(value, field, { field = it }) {
-            Config.rootMode = entryValues[it].toInt()
+            Config.rootMode = it
         }
 }
 
 object MultiuserMode : BaseSettingsItem.Selector() {
     override val title = R.string.multiuser_mode.asTransitive()
     override val entryRes = R.array.multiuser_mode
-    override val entryValRes = R.array.value_array
 
     override var value = Config.suMultiuserMode
         set(value) = setV(value, field, { field = it }) {
-            Config.suMultiuserMode = entryValues[it].toInt()
+            Config.suMultiuserMode = it
         }
 
     override val description
@@ -272,11 +285,10 @@ object MultiuserMode : BaseSettingsItem.Selector() {
 object MountNamespaceMode : BaseSettingsItem.Selector() {
     override val title = R.string.mount_namespace_mode.asTransitive()
     override val entryRes = R.array.namespace
-    override val entryValRes = R.array.value_array
 
     override var value = Config.suMntNamespaceMode
         set(value) = setV(value, field, { field = it }) {
-            Config.suMntNamespaceMode = entryValues[it].toInt()
+            Config.suMntNamespaceMode = it
         }
 
     override val description
@@ -286,11 +298,10 @@ object MountNamespaceMode : BaseSettingsItem.Selector() {
 object AutomaticResponse : BaseSettingsItem.Selector() {
     override val title = R.string.auto_response.asTransitive()
     override val entryRes = R.array.auto_response
-    override val entryValRes = R.array.value_array
 
     override var value = Config.suAutoResponse
         set(value) = setV(value, field, { field = it }) {
-            Config.suAutoResponse = entryValues[it].toInt()
+            Config.suAutoResponse = it
         }
 }
 
@@ -301,7 +312,7 @@ object RequestTimeout : BaseSettingsItem.Selector() {
 
     override var value = selected
         set(value) = setV(value, field, { field = it }) {
-            Config.suDefaultTimeout = entryValues[it].toInt()
+            Config.suDefaultTimeout = it
         }
 
     private val selected: Int
@@ -311,10 +322,9 @@ object RequestTimeout : BaseSettingsItem.Selector() {
 object SUNotification : BaseSettingsItem.Selector() {
     override val title = R.string.superuser_notification.asTransitive()
     override val entryRes = R.array.su_notification
-    override val entryValRes = R.array.value_array
 
     override var value = Config.suNotification
         set(value) = setV(value, field, { field = it }) {
-            Config.suNotification = entryValues[it].toInt()
+            Config.suNotification = it
         }
 }

@@ -1,7 +1,4 @@
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <fcntl.h>
-#include <vector>
+#include <sys/mount.h>
 #include <libgen.h>
 
 #include <magisk.hpp>
@@ -81,33 +78,6 @@ static void load_overlay_rc(const char *overlay) {
 	}
 }
 
-void RootFSInit::setup_rootfs() {
-	if (patch_sepolicy("/sepolicy")) {
-		auto init = raw_data::mmap_rw("/init");
-		init.patch({ make_pair(SPLIT_PLAT_CIL, "xxx") });
-	}
-
-	// Handle overlays
-	if (access("/overlay.d", F_OK) == 0) {
-		LOGD("Merge overlay.d\n");
-		load_overlay_rc("/overlay.d");
-		mv_path("/overlay.d", "/");
-	}
-
-	patch_init_rc("/init.rc", "/init.p.rc", "/sbin");
-	rename("/init.p.rc", "/init.rc");
-
-	// Create hardlink mirror of /sbin to /root
-	mkdir("/root", 0750);
-	clone_attr("/sbin", "/root");
-	link_path("/sbin", "/root");
-
-	// Dump magiskinit as magisk
-	int fd = xopen("/sbin/magisk", O_WRONLY | O_CREAT, 0755);
-	write(fd, self.buf, self.sz);
-	close(fd);
-}
-
 bool MagiskInit::patch_sepolicy(const char *file) {
 	bool patch_init = false;
 	sepolicy *sepol = nullptr;
@@ -135,16 +105,19 @@ bool MagiskInit::patch_sepolicy(const char *file) {
 	sepol->magisk_rules();
 
 	// Custom rules
-	if (auto dir = open_dir(persist_dir.data()); dir) {
-		for (dirent *entry; (entry = xreaddir(dir.get()));) {
-			auto rule = persist_dir + "/" + entry->d_name + "/sepolicy.rule";
-			if (access(rule.data(), R_OK) == 0) {
-				LOGD("Loading custom sepolicy patch: %s\n", rule.data());
-				sepol->load_rule_file(rule.data());
+	if (!custom_rules_dir.empty()) {
+		if (auto dir = open_dir(custom_rules_dir.data())) {
+			for (dirent *entry; (entry = xreaddir(dir.get()));) {
+				auto rule = custom_rules_dir + "/" + entry->d_name + "/sepolicy.rule";
+				if (access(rule.data(), R_OK) == 0) {
+					LOGD("Loading custom sepolicy patch: [%s]\n", rule.data());
+					sepol->load_rule_file(rule.data());
+				}
 			}
 		}
 	}
 
+	LOGD("Dumping sepolicy to: [%s]\n", file);
 	sepol->to_file(file);
 	delete sepol;
 
@@ -208,65 +181,62 @@ static void magic_mount(const string &sdir, const string &ddir = "") {
 }
 
 #define ROOTMIR     MIRRDIR "/system_root"
-#define ROOTBLK     BLOCKDIR "/system_root"
 #define MONOPOLICY  "/sepolicy"
 #define LIBSELINUX  "/system/" LIBNAME "/libselinux.so"
 #define NEW_INITRC  "/system/etc/init/hw/init.rc"
 
 void SARBase::patch_rootdir() {
-	char tmp_dir[16];
+	string tmp_dir;
 	const char *sepol;
 
-	char *p;
 	if (access("/sbin", F_OK) == 0) {
-		p = tmp_dir + sprintf(tmp_dir, "%s", "/sbin");
+		tmp_dir = "/sbin";
 		sepol = "/sbin/.se";
 	} else {
-		p = tmp_dir + sprintf(tmp_dir, "%s", "/dev/");
-		p += gen_rand_str(p, 8);
-		xmkdir(tmp_dir, 0);
+		char buf[8];
+		gen_rand_str(buf, sizeof(buf));
+		tmp_dir = "/dev/"s + buf;
+		xmkdir(tmp_dir.data(), 0);
 		sepol = "/dev/.se";
 	}
 
-	setup_tmp(tmp_dir, self, config);
-	persist_dir = MIRRDIR "/persist/magisk";
+	setup_tmp(tmp_dir.data());
+	chdir(tmp_dir.data());
 
-	chdir(tmp_dir);
+	mount_rules_dir(BLOCKDIR, MIRRDIR);
 
 	// Mount system_root mirror
-	struct stat st;
-	xstat("/", &st);
 	xmkdir(ROOTMIR, 0755);
-	mknod(ROOTBLK, S_IFBLK | 0600, st.st_dev);
-	strcpy(p, "/" ROOTBLK);
-	if (xmount(tmp_dir, ROOTMIR, "ext4", MS_RDONLY, nullptr))
-		xmount(tmp_dir, ROOTMIR, "erofs", MS_RDONLY, nullptr);
-	*p = '\0';
+	xmount("/", ROOTMIR, nullptr, MS_BIND, nullptr);
+	mount_list.emplace_back(tmp_dir + "/" ROOTMIR);
 
 	// Recreate original sbin structure if necessary
-	if (tmp_dir == "/sbin"sv)
+	if (tmp_dir == "/sbin")
 		recreate_sbin(ROOTMIR "/sbin", true);
 
 	// Patch init
-	int src = xopen("/init", O_RDONLY | O_CLOEXEC);
-	auto init = raw_data::read(src);
-	int patch_count = init.patch({
-		make_pair(SPLIT_PLAT_CIL, "xxx"), /* Force loading monolithic sepolicy */
-		make_pair(MONOPOLICY, sepol)      /* Redirect /sepolicy to custom path */
-	});
-	xmkdir(ROOTOVL, 0);
-	int dest = xopen(ROOTOVL "/init", O_CREAT | O_WRONLY | O_CLOEXEC, 0);
-	xwrite(dest, init.buf, init.sz);
-	fclone_attr(src, dest);
-	close(src);
-	close(dest);
+	int patch_count;
+	{
+		int src = xopen("/init", O_RDONLY | O_CLOEXEC);
+		auto init = raw_data::read(src);
+		patch_count = init.patch({
+			make_pair(SPLIT_PLAT_CIL, "xxx"), /* Force loading monolithic sepolicy */
+			make_pair(MONOPOLICY, sepol)      /* Redirect /sepolicy to custom path */
+		 });
+		xmkdir(ROOTOVL, 0);
+		int dest = xopen(ROOTOVL "/init", O_CREAT | O_WRONLY | O_CLOEXEC, 0);
+		xwrite(dest, init.buf, init.sz);
+		fclone_attr(src, dest);
+		close(src);
+		close(dest);
+	}
 
 	if (patch_count != 2 && access(LIBSELINUX, F_OK) == 0) {
 		// init is dynamically linked, need to patch libselinux
 		auto lib = raw_data::read(LIBSELINUX);
 		lib.patch({make_pair(MONOPOLICY, sepol)});
 		xmkdirs(dirname(ROOTOVL LIBSELINUX), 0755);
-		dest = xopen(ROOTOVL LIBSELINUX, O_CREAT | O_WRONLY | O_CLOEXEC, 0);
+		int dest = xopen(ROOTOVL LIBSELINUX, O_CREAT | O_WRONLY | O_CLOEXEC, 0);
 		xwrite(dest, lib.buf, lib.sz);
 		close(dest);
 		clone_attr(LIBSELINUX, ROOTOVL LIBSELINUX);
@@ -281,7 +251,7 @@ void SARBase::patch_rootdir() {
 	if (connect(sockfd, (struct sockaddr*) &sun, setup_sockaddr(&sun, INIT_SOCKET)) == 0) {
 		LOGD("ACK init daemon to write backup files\n");
 		// Let daemon know where tmp_dir is
-		write_string(sockfd, tmp_dir);
+		write_string(sockfd, tmp_dir.data());
 		// Wait for daemon to finish restoring files
 		int ack;
 		read(sockfd, &ack, sizeof(ack));
@@ -301,40 +271,84 @@ void SARBase::patch_rootdir() {
 
 	// Patch init.rc
 	if (access("/init.rc", F_OK) == 0) {
-		patch_init_rc("/init.rc", ROOTOVL "/init.rc", tmp_dir);
+		patch_init_rc("/init.rc", ROOTOVL "/init.rc", tmp_dir.data());
 	} else {
 		// Android 11's new init.rc
 		xmkdirs(dirname(ROOTOVL NEW_INITRC), 0755);
-		patch_init_rc(NEW_INITRC, ROOTOVL NEW_INITRC, tmp_dir);
+		patch_init_rc(NEW_INITRC, ROOTOVL NEW_INITRC, tmp_dir.data());
 	}
 
 	// Mount rootdir
 	magic_mount(ROOTOVL);
-	dest = xopen(ROOTMNT, O_WRONLY | O_CREAT | O_CLOEXEC, 0);
+	int dest = xopen(ROOTMNT, O_WRONLY | O_CREAT | O_CLOEXEC, 0);
 	write(dest, magic_mount_list.data(), magic_mount_list.length());
 	close(dest);
 
 	chdir("/");
 }
 
-int magisk_proxy_main(int argc, char *argv[]) {
-	setup_klog();
+#define TMP_MNTDIR "/dev/mnt"
+#define TMP_RULESDIR "/.backup/.sepolicy.rules"
 
-	auto self = raw_data::read("/sbin/magisk");
-	auto config = raw_data::read("/.backup/.magisk");
+void RootFSInit::patch_rootfs() {
+	// Handle custom sepolicy rules
+	xmkdir(TMP_MNTDIR, 0755);
+	mount_rules_dir("/dev/block", TMP_MNTDIR);
+	// Preserve custom rule path
+	if (!custom_rules_dir.empty()) {
+		string rules_dir = "./" + custom_rules_dir.substr(sizeof(TMP_MNTDIR));
+		xsymlink(rules_dir.data(), TMP_RULESDIR);
+	}
 
+	if (patch_sepolicy("/sepolicy")) {
+		auto init = raw_data::mmap_rw("/init");
+		init.patch({ make_pair(SPLIT_PLAT_CIL, "xxx") });
+	}
+
+	// Handle overlays
+	if (access("/overlay.d", F_OK) == 0) {
+		LOGD("Merge overlay.d\n");
+		load_overlay_rc("/overlay.d");
+		mv_path("/overlay.d", "/");
+	}
+
+	patch_init_rc("/init.rc", "/init.p.rc", "/sbin");
+	rename("/init.p.rc", "/init.rc");
+
+	// Create hardlink mirror of /sbin to /root
+	mkdir("/root", 0750);
+	clone_attr("/sbin", "/root");
+	link_path("/sbin", "/root");
+
+	// Dump magiskinit as magisk
+	int fd = xopen("/sbin/magisk", O_WRONLY | O_CREAT, 0755);
+	write(fd, self.buf, self.sz);
+	close(fd);
+}
+
+void MagiskProxy::start() {
+	// Mount rootfs as rw to do post-init rootfs patches
 	xmount(nullptr, "/", nullptr, MS_REMOUNT, nullptr);
+
+	// Backup stuffs before removing them
+	self = raw_data::read("/sbin/magisk");
+	config = raw_data::read("/.backup/.magisk");
+	char custom_rules_dir[64];
+	custom_rules_dir[0] = '\0';
+	xreadlink(TMP_RULESDIR, custom_rules_dir, sizeof(custom_rules_dir));
 
 	unlink("/sbin/magisk");
 	rm_rf("/.backup");
 
-	setup_tmp("/sbin", self, config);
+	setup_tmp("/sbin");
 
 	// Create symlinks pointing back to /root
 	recreate_sbin("/root", false);
 
+	if (custom_rules_dir[0])
+		xsymlink(custom_rules_dir, "/sbin/" RULESDIR);
+
+	// Tell magiskd to remount rootfs
 	setenv("REMOUNT_ROOT", "1", 1);
 	execv("/sbin/magisk", argv);
-
-	return 1;
 }

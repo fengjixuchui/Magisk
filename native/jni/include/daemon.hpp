@@ -8,7 +8,7 @@
 
 // Daemon command codes
 enum {
-	DO_NOTHING = 0,
+	START_DAEMON,
 	SUPERUSER,
 	CHECK_VERSION,
 	CHECK_VERSION_CODE,
@@ -19,6 +19,7 @@ enum {
 	SQLITE_CMD,
 	REMOVE_MODULES,
 	GET_PATH,
+	DAEMON_CODE_END,
 };
 
 // Return codes for daemon
@@ -31,10 +32,11 @@ enum {
 
 // Daemon state
 enum {
+	STATE_NONE,
 	STATE_POST_FS_DATA,
-	STATE_LATE_START,
-	STATE_BOOT_COMPLETE,
-	STATE_UNKNOWN
+	STATE_POST_FS_DATA_DONE,
+	STATE_LATE_START_DONE,
+	STATE_BOOT_COMPLETE
 };
 
 extern int SDK_INT;
@@ -53,6 +55,7 @@ void su_daemon_handler(int client, ucred *credential);
 int connect_daemon(bool create = false);
 void unlock_blocks();
 void reboot();
+void setup_logfile(bool reset);
 
 // Module stuffs
 void handle_modules();

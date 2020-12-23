@@ -1,7 +1,7 @@
 plugins {
     id("com.android.application")
     kotlin("android")
-    kotlin("android.extensions")
+    kotlin("plugin.parcelize")
     kotlin("kapt")
     id("androidx.navigation.safeargs.kotlin")
 }
@@ -62,10 +62,6 @@ android {
     kotlinOptions {
         jvmTarget = "1.8"
     }
-}
-
-androidExtensions {
-    isExperimental = true
 }
 
 val copyUtils = tasks.register("copyUtils", Copy::class) {
@@ -134,7 +130,7 @@ dependencies {
     implementation("androidx.navigation:navigation-ui-ktx:${vNav}")
 
     implementation("androidx.biometric:biometric:1.0.1")
-    implementation("androidx.constraintlayout:constraintlayout:2.0.2")
+    implementation("androidx.constraintlayout:constraintlayout:2.0.4")
     implementation("androidx.swiperefreshlayout:swiperefreshlayout:1.1.0")
     implementation("androidx.browser:browser:1.2.0")
     implementation("androidx.preference:preference:1.1.1")

@@ -16,8 +16,6 @@ object Const {
     const val BOOTCTL_REVISION = "18ab78817087c337ae0edd1ecac38aec49217880"
 
     // Misc
-    const val ANDROID_MANIFEST = "AndroidManifest.xml"
-    const val MAGISK_INSTALL_LOG_FILENAME = "magisk_install_log_%s.log"
     val USER_ID = Process.myUid() / 100000
 
     object Version {
@@ -58,7 +56,7 @@ object Const {
     object Key {
         // intents
         const val OPEN_SECTION = "section"
-        const val HIDDEN_PKG = "hidden_pkg"
+        const val PREV_PKG = "prev_pkg"
     }
 
     object Value {

@@ -11,7 +11,8 @@
 
 using namespace std;
 
-static void parse_cmdline(const std::function<void (std::string_view, const char *)> &fn) {
+template<typename Func>
+static void parse_cmdline(const Func &fn) {
 	char cmdline[4096];
 	int fd = xopen("/proc/cmdline", O_RDONLY | O_CLOEXEC);
 	cmdline[read(fd, cmdline, sizeof(cmdline))] = '\0';
@@ -129,6 +130,16 @@ void setup_klog() {
 	}
 }
 
+#define read_dt(name, key) \
+sprintf(file_name, "%s/" name, cmd->dt_dir); \
+if (access(file_name, R_OK) == 0){ \
+    string data = full_read(file_name); \
+    if (!data.empty()) { \
+        data.pop_back(); \
+        strcpy(cmd->key, data.data()); \
+    } \
+}
+
 void load_kernel_info(cmdline *cmd) {
 	// Get kernel data using procfs and sysfs
 	xmkdir("/proc", 0755);
@@ -139,7 +150,7 @@ void load_kernel_info(cmdline *cmd) {
 	// Log to kernel
 	setup_klog();
 
-	parse_cmdline([&](auto key, auto value) -> void {
+	parse_cmdline([=](string_view key, const char *value) -> void {
 		if (key == "androidboot.slot_suffix") {
 			strcpy(cmd->slot, value);
 		} else if (key == "androidboot.slot") {
@@ -160,6 +171,15 @@ void load_kernel_info(cmdline *cmd) {
 		}
 	});
 
+	LOGD("Kernel cmdline info:\n");
+	LOGD("skip_initramfs=[%d]\n", cmd->skip_initramfs);
+	LOGD("force_normal_boot=[%d]\n", cmd->force_normal_boot);
+	LOGD("slot=[%s]\n", cmd->slot);
+	LOGD("dt_dir=[%s]\n", cmd->dt_dir);
+	LOGD("fstab_suffix=[%s]\n", cmd->fstab_suffix);
+	LOGD("hardware=[%s]\n", cmd->hardware);
+	LOGD("hardware.platform=[%s]\n", cmd->hardware_plat);
+
 	parse_prop_file("/.backup/.magisk", [=](auto key, auto value) -> bool {
 		if (key == "RECOVERYMODE" && value == "true") {
 			LOGD("Running in recovery mode, waiting for key...\n");
@@ -172,11 +192,14 @@ void load_kernel_info(cmdline *cmd) {
 	if (cmd->dt_dir[0] == '\0')
 		strcpy(cmd->dt_dir, DEFAULT_DT_DIR);
 
-	LOGD("Device info:\n");
-	LOGD("skip_initramfs=[%d]\n", cmd->skip_initramfs);
-	LOGD("force_normal_boot=[%d]\n", cmd->force_normal_boot);
-	LOGD("slot=[%s]\n", cmd->slot);
+	char file_name[128];
+	read_dt("fstab_suffix", fstab_suffix)
+	read_dt("hardware", hardware)
+	read_dt("hardware.platform", hardware_plat)
+
+	LOGD("Device tree info:\n");
 	LOGD("dt_dir=[%s]\n", cmd->dt_dir);
+	LOGD("fstab_suffix=[%s]\n", cmd->fstab_suffix);
 	LOGD("hardware=[%s]\n", cmd->hardware);
 	LOGD("hardware.platform=[%s]\n", cmd->hardware_plat);
 }

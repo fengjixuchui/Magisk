@@ -104,7 +104,8 @@ void dyn_img_hdr::print() {
 void dyn_img_hdr::dump_hdr_file() {
 	FILE *fp = xfopen(HEADER_FILE, "w");
 	fprintf(fp, "pagesize=%u\n", page_size());
-	fprintf(fp, "name=%s\n", name());
+	if (name())
+		fprintf(fp, "name=%s\n", name());
 	fprintf(fp, "cmdline=%.*s%.*s\n", BOOT_ARGS_SIZE, cmdline(), BOOT_EXTRA_ARGS_SIZE, extra_cmdline());
 	uint32_t ver = os_version();
 	if (ver) {
@@ -129,7 +130,7 @@ void dyn_img_hdr::load_hdr_file() {
 	parse_prop_file(HEADER_FILE, [=](string_view key, string_view value) -> bool {
 		if (key == "page_size") {
 			page_size() = parse_int(value);
-		} else if (key == "name") {
+		} else if (key == "name" && name()) {
 			memset(name(), 0, 16);
 			memcpy(name(), value.data(), value.length() > 15 ? 15 : value.length());
 		} else if (key == "cmdline") {
@@ -162,7 +163,8 @@ boot_img::boot_img(const char *image) {
 	mmap_ro(image, map_addr, map_size);
 	fprintf(stderr, "Parsing boot image: [%s]\n", image);
 	for (uint8_t *addr = map_addr; addr < map_addr + map_size; ++addr) {
-		switch (check_fmt(addr, map_size)) {
+		format_t fmt = check_fmt(addr, map_size);
+		switch (fmt) {
 		case CHROMEOS:
 			// chromeos require external signing
 			flags |= CHROMEOS_FLAG;
@@ -179,7 +181,8 @@ boot_img::boot_img(const char *image) {
 			addr += sizeof(blob_hdr) - 1;
 			break;
 		case AOSP:
-			parse_image(addr);
+		case AOSP_VENDOR:
+			parse_image(addr, fmt);
 			return;
 		default:
 			break;
@@ -242,9 +245,12 @@ off += hdr->name##_size(); \
 off = do_align(off, hdr->page_size()); \
 }
 
-void boot_img::parse_image(uint8_t *addr) {
+void boot_img::parse_image(uint8_t *addr, format_t type) {
 	auto hp = reinterpret_cast<boot_img_hdr*>(addr);
-	if (hp->page_size >= 0x02000000) {
+	if (type == AOSP_VENDOR) {
+		fprintf(stderr, "VENDOR_BOOT_HDR\n");
+		hdr = new dyn_img_vnd_v3(addr);
+	} else if (hp->page_size >= 0x02000000) {
 		fprintf(stderr, "PXA_BOOT_HDR\n");
 		hdr = new dyn_img_pxa(addr);
 	} else {
@@ -289,7 +295,7 @@ void boot_img::parse_image(uint8_t *addr) {
 
 	hdr->print();
 
-	size_t off = hdr->page_size();
+	size_t off = hdr->hdr_space();
 	hdr_addr = addr;
 	get_block(kernel);
 	get_block(ramdisk);
@@ -469,9 +475,9 @@ void repack(const char* src_img, const char* out_img, bool skip_comp) {
 		restore_buf(fd, boot.map_addr, ACCLAIM_PRE_HEADER_SZ);
 	}
 
-	// Copy a page for header
+	// Copy header
 	off.header = lseek(fd, 0, SEEK_CUR);
-	restore_buf(fd, boot.hdr_addr, boot.hdr->page_size());
+	restore_buf(fd, boot.hdr_addr, boot.hdr->hdr_space());
 
 	// kernel
 	off.kernel = lseek(fd, 0, SEEK_CUR);

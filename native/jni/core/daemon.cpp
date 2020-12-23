@@ -14,17 +14,18 @@
 #include <db.hpp>
 #include <resetprop.hpp>
 #include <flags.hpp>
+#include <stream.hpp>
 
 using namespace std;
 
 int SDK_INT = -1;
 bool RECOVERY_MODE = false;
 string MAGISKTMP;
-int DAEMON_STATE = STATE_UNKNOWN;
+int DAEMON_STATE = STATE_NONE;
 
 static struct stat self_st;
 
-static bool verify_client(int client, pid_t pid) {
+static bool verify_client(pid_t pid) {
 	// Verify caller is the same as server
 	char path[32];
 	sprintf(path, "/proc/%d/exe", pid);
@@ -70,11 +71,14 @@ static void handle_request(int client) {
 	// Verify client credentials
 	ucred cred;
 	get_client_cred(client, &cred);
-	if (cred.uid != 0 && !verify_client(client, cred.pid))
+	if (cred.uid != 0 && !verify_client(cred.pid))
+		goto shortcut;
+
+	req_code = read_int(client);
+	if (req_code < 0 || req_code >= DAEMON_CODE_END)
 		goto shortcut;
 
 	// Check client permissions
-	req_code = read_int(client);
 	switch (req_code) {
 	case MAGISKHIDE:
 	case POST_FS_DATA:
@@ -95,19 +99,8 @@ static void handle_request(int client) {
 		break;
 	}
 
+	// Simple requests
 	switch (req_code) {
-	// In case of init trigger launches, set the corresponding states
-	case POST_FS_DATA:
-		DAEMON_STATE = STATE_POST_FS_DATA;
-		break;
-	case LATE_START:
-		DAEMON_STATE = STATE_LATE_START;
-		break;
-	case BOOT_COMPLETE:
-		DAEMON_STATE = STATE_BOOT_COMPLETE;
-		break;
-
-	// Simple requests to query daemon info
 	case CHECK_VERSION:
 		write_string(client, MAGISK_VERSION ":MAGISK");
 		goto shortcut;
@@ -117,26 +110,95 @@ static void handle_request(int client) {
 	case GET_PATH:
 		write_string(client, MAGISKTMP.data());
 		goto shortcut;
-	case DO_NOTHING:
+	case START_DAEMON:
+		setup_logfile(true);
 		goto shortcut;
 	}
 
 	// Create new thread to handle complex requests
-	new_daemon_thread(std::bind(&request_handler, client, req_code, cred));
+	new_daemon_thread([=] { return request_handler(client, req_code, cred); });
 	return;
 
 shortcut:
 	close(client);
 }
 
-#define vlog __android_log_vprint
+static shared_ptr<FILE> log_file;
+
+atomic_flag file_backed = ATOMIC_FLAG_INIT;
+static char *log_buf;
+static size_t log_buf_len;
+
+void setup_logfile(bool reset) {
+	if (file_backed.test_and_set(memory_order_relaxed))
+		return;
+	if (reset)
+		rename(LOGFILE, LOGFILE ".bak");
+
+	int fd = xopen(LOGFILE, O_WRONLY | O_APPEND | O_CREAT | O_CLOEXEC, 0644);
+	if (fd < 0) {
+		log_file.reset();
+		return;
+	}
+
+	// Dump all logs in memory (if exists)
+	if (log_buf)
+		write(fd, log_buf, log_buf_len);
+
+	if (FILE *fp = fdopen(fd, "a")) {
+		setbuf(fp, nullptr);
+		log_file.reset(fp, &fclose);
+	}
+}
+
+static int magisk_log(int prio, const char *fmt, va_list ap) {
+	va_list args;
+	va_copy(args, ap);
+
+	// Log to logcat
+	__android_log_vprint(prio, "Magisk", fmt, ap);
+
+	auto local_log_file = log_file;
+	if (!local_log_file)
+		return 0;
+
+	char buf[4096];
+	timeval tv;
+	tm tm;
+	char type;
+	switch (prio) {
+	case ANDROID_LOG_DEBUG:
+		type = 'D';
+		break;
+	case ANDROID_LOG_INFO:
+		type = 'I';
+		break;
+	case ANDROID_LOG_WARN:
+		type = 'W';
+		break;
+	default:
+		type = 'E';
+		break;
+	}
+	gettimeofday(&tv, nullptr);
+	localtime_r(&tv.tv_sec, &tm);
+	size_t len = strftime(buf, sizeof(buf), "%m-%d %T", &tm);
+	int ms = tv.tv_usec / 1000;
+	len += sprintf(buf + len, ".%03d %c : ", ms, type);
+	strcpy(buf + len, fmt);
+	return vfprintf(local_log_file.get(), buf, args);
+}
 
 static void android_logging() {
-	static constexpr char TAG[] = "Magisk";
-	log_cb.d = [](auto fmt, auto ap){ return vlog(ANDROID_LOG_DEBUG, TAG, fmt, ap); };
-	log_cb.i = [](auto fmt, auto ap){ return vlog(ANDROID_LOG_INFO, TAG, fmt, ap); };
-	log_cb.w = [](auto fmt, auto ap){ return vlog(ANDROID_LOG_WARN, TAG, fmt, ap); };
-	log_cb.e = [](auto fmt, auto ap){ return vlog(ANDROID_LOG_ERROR, TAG, fmt, ap); };
+	auto in_mem_file = make_stream_fp<byte_stream>(log_buf, log_buf_len);
+	log_file.reset(in_mem_file.release(), [](FILE *) {
+		free(log_buf);
+		log_buf = nullptr;
+	});
+	log_cb.d = [](auto fmt, auto ap){ return magisk_log(ANDROID_LOG_DEBUG, fmt, ap); };
+	log_cb.i = [](auto fmt, auto ap){ return magisk_log(ANDROID_LOG_INFO, fmt, ap); };
+	log_cb.w = [](auto fmt, auto ap){ return magisk_log(ANDROID_LOG_WARN, fmt, ap); };
+	log_cb.e = [](auto fmt, auto ap){ return magisk_log(ANDROID_LOG_ERROR, fmt, ap); };
 	log_cb.ex = nop_ex;
 }
 

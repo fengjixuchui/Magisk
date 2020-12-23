@@ -18,7 +18,6 @@ import com.topjohnwu.magisk.ktx.inject
 import com.topjohnwu.magisk.ui.theme.Theme
 import org.xmlpull.v1.XmlPullParser
 import java.io.File
-import java.io.IOException
 import java.io.InputStream
 
 object Config : PreferenceModel, DBConfig {
@@ -50,6 +49,7 @@ object Config : PreferenceModel, DBConfig {
         const val SU_AUTO_RESPONSE = "su_auto_response"
         const val SU_NOTIFICATION = "su_notification"
         const val SU_REAUTH = "su_reauth"
+        const val SU_TAPJACK = "su_tapjack"
         const val CHECK_UPDATES = "check_update"
         const val UPDATE_CHANNEL = "update_channel"
         const val CUSTOM_CHANNEL = "custom_channel"
@@ -134,6 +134,7 @@ object Config : PreferenceModel, DBConfig {
     var darkTheme by preference(Key.DARK_THEME, AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM)
     var themeOrdinal by preference(Key.THEME_ORDINAL, Theme.Piplup.ordinal)
     var suReAuth by preference(Key.SU_REAUTH, false)
+    var suTapjack by preference(Key.SU_TAPJACK, true)
     var checkUpdate by preference(Key.CHECK_UPDATES, true)
     var doh by preference(Key.DOH, false)
     var magiskHide by preference(Key.MAGISKHIDE, true)
@@ -157,12 +158,13 @@ object Config : PreferenceModel, DBConfig {
 
     private const val SU_FINGERPRINT = "su_fingerprint"
 
-    fun load(pkg: String) {
-        try {
+    fun load(pkg: String?) {
+        // Only try to load prefs when fresh install and a previous package name is set
+        if (pkg != null && prefs.all.isEmpty()) runCatching {
             context.contentResolver.openInputStream(Provider.PREFS_URI(pkg))?.use {
                 prefs.edit { parsePrefs(it) }
             }
-        } catch (e: IOException) {}
+        }
 
         prefs.edit {
             // Settings migration

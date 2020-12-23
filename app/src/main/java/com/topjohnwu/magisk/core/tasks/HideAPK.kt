@@ -33,6 +33,7 @@ object HideAPK {
     private const val ALPHA = "abcdefghijklmnopqrstuvwxyz"
     private const val ALPHADOTS = "$ALPHA....."
     private const val APP_NAME = "Magisk Manager"
+    private const val ANDROID_MANIFEST = "AndroidManifest.xml"
 
     // Some arbitrary limit
     const val MAX_LABEL_LENGTH = 32
@@ -71,7 +72,7 @@ object HideAPK {
     ): Boolean {
         try {
             val jar = JarMap.open(apk)
-            val je = jar.getJarEntry(Const.ANDROID_MANIFEST)
+            val je = jar.getJarEntry(ANDROID_MANIFEST)
             val xml = AXML(jar.getRawData(je))
 
             if (!xml.findAndPatch(APPLICATION_ID to pkg, APP_NAME to label.toString()))
@@ -123,6 +124,7 @@ object HideAPK {
             Config.suManager = pkg
             grantUriPermission(pkg, APK_URI, Intent.FLAG_GRANT_READ_URI_PERMISSION)
             grantUriPermission(pkg, PREFS_URI, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            intent.putExtra(Const.Key.PREV_PKG, packageName)
             startActivity(intent)
         }
 
@@ -167,7 +169,7 @@ object HideAPK {
             Config.suManager = ""
             grantUriPermission(APPLICATION_ID, APK_URI, Intent.FLAG_GRANT_READ_URI_PERMISSION)
             grantUriPermission(APPLICATION_ID, PREFS_URI, Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            intent.putExtra(Const.Key.HIDDEN_PKG, packageName)
+            intent.putExtra(Const.Key.PREV_PKG, packageName)
             startActivity(intent)
         }
 
