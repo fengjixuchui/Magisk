@@ -1,5 +1,25 @@
 # Magisk Changelog
 
+### v21.4
+
+- [MagiskSU] Fix `su -c` behavior that broke many root apps
+- [General] Properly handle read/write over sockets (the `broken pipe` issue)
+
+### v21.3
+
+- [MagiskInit] Avoid mounting `f2fs` userdata as it may result in kernel crashes. This shall fix a lot of bootloops
+- [MagiskBoot] Fix a minor header checksum bug for `DHTB` header and ASUS `blob` image formats
+- [MagiskHide] Allowing hiding isolated processes if the mount namespace is separated
+
+### v21.2
+
+- [MagiskInit] Detect 2SI after mounting `system_root` on legacy SAR devices
+- [General] Make sure `post-fs-data` scripts cannot block more than 35 seconds
+- [General] Fix the `magisk --install-module` command
+- [General] Trim Windows newline when reading files
+- [General] Directly log to file to prevent `logcat` weirdness
+- [MagiskBoot] Fix header dump/load for header v3 images
+
 ### v21.1
 
 - [MagiskBoot] Support boot header v3 (Pixel 5 and 4a 5G)

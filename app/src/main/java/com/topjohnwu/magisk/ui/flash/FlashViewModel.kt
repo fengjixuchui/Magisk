@@ -1,9 +1,10 @@
 package com.topjohnwu.magisk.ui.flash
 
-import android.content.res.Resources
 import android.net.Uri
 import android.view.MenuItem
 import androidx.databinding.Bindable
+import androidx.lifecycle.LiveData
+import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.viewModelScope
 import com.topjohnwu.magisk.BR
 import com.topjohnwu.magisk.R
@@ -11,6 +12,7 @@ import com.topjohnwu.magisk.arch.BaseViewModel
 import com.topjohnwu.magisk.arch.diffListOf
 import com.topjohnwu.magisk.arch.itemBindingOf
 import com.topjohnwu.magisk.core.Const
+import com.topjohnwu.magisk.core.Info
 import com.topjohnwu.magisk.core.tasks.FlashZip
 import com.topjohnwu.magisk.core.tasks.MagiskInstaller
 import com.topjohnwu.magisk.core.utils.MediaStoreUtils
@@ -25,18 +27,14 @@ import com.topjohnwu.superuser.Shell
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
-class FlashViewModel(
-    args: FlashFragmentArgs,
-    private val resources: Resources
-) : BaseViewModel() {
+class FlashViewModel(args: FlashFragmentArgs) : BaseViewModel() {
 
     @get:Bindable
     var showReboot = Shell.rootAccess()
         set(value) = set(value, field, { field = it }, BR.showReboot)
 
-    @get:Bindable
-    var behaviorText = resources.getString(R.string.flashing)
-        set(value) = set(value, field, { field = it }, BR.behaviorText)
+    private val _subtitle = MutableLiveData(R.string.flashing)
+    val subtitle get() = _subtitle as LiveData<Int>
 
     val adapter = RvBindingAdapter<ConsoleItem>()
     val items = diffListOf<ConsoleItem>()
@@ -52,33 +50,35 @@ class FlashViewModel(
     }
 
     init {
-        args.dismissId.takeIf { it != -1 }?.also {
-            Notifications.mgr.cancel(it)
-        }
-        val (installer, action, uri) = args
-        startFlashing(installer, uri, action)
+        val (action, uri, id) = args
+        if (id != -1)
+            Notifications.mgr.cancel(id)
+        startFlashing(action, uri)
     }
 
-    private fun startFlashing(installer: Uri, uri: Uri?, action: String) {
+    private fun startFlashing(action: String, uri: Uri?) {
         viewModelScope.launch {
             val result = when (action) {
                 Const.Value.FLASH_ZIP -> {
-                    FlashZip(installer, outItems, logItems).exec()
+                    FlashZip(uri!!, outItems, logItems).exec()
                 }
                 Const.Value.UNINSTALL -> {
                     showReboot = false
-                    FlashZip.Uninstall(installer, outItems, logItems).exec()
+                    MagiskInstaller.Uninstall(outItems, logItems).exec()
                 }
                 Const.Value.FLASH_MAGISK -> {
-                    MagiskInstaller.Direct(installer, outItems, logItems).exec()
+                    if (Info.isEmulator)
+                        MagiskInstaller.Emulator(outItems, logItems).exec()
+                    else
+                        MagiskInstaller.Direct(outItems, logItems).exec()
                 }
                 Const.Value.FLASH_INACTIVE_SLOT -> {
-                    MagiskInstaller.SecondSlot(installer, outItems, logItems).exec()
+                    MagiskInstaller.SecondSlot(outItems, logItems).exec()
                 }
                 Const.Value.PATCH_FILE -> {
                     uri ?: return@launch
                     showReboot = false
-                    MagiskInstaller.Patch(installer, uri, outItems, logItems).exec()
+                    MagiskInstaller.Patch(uri, outItems, logItems).exec()
                 }
                 else -> {
                     back()
@@ -91,9 +91,9 @@ class FlashViewModel(
 
     private fun onResult(success: Boolean) {
         state = if (success) State.LOADED else State.LOADING_FAILED
-        behaviorText = when {
-            success -> resources.getString(R.string.done)
-            else -> resources.getString(R.string.failure)
+        when {
+            success -> _subtitle.postValue(R.string.done)
+            else -> _subtitle.postValue(R.string.failure)
         }
     }
 

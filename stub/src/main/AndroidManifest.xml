@@ -4,25 +4,82 @@
     xmlns:tools="http://schemas.android.com/tools"
     package="com.topjohnwu.magisk">
 
-    <uses-permission android:name="android.permission.INTERNET"/>
+    <uses-permission android:name="android.permission.USE_BIOMETRIC" />
+    <uses-permission android:name="android.permission.USE_FINGERPRINT" />
 
     <application
-        android:allowBackup="true"
-        tools:ignore="AllowBackup">
+        android:name="a.Q"
+        android:appComponentFactory="a.z"
+        tools:ignore="GoogleAppIndexingWarning,MissingApplicationIcon,UnusedAttribute">
 
-        <activity android:name=".MainActivity">
+        <!-- Splash -->
+        <activity android:name="a.u7">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.APPLICATION_PREFERENCES" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
         </activity>
 
-        <provider
-            android:name=".FileProvider"
-            android:authorities="${applicationId}.provider"
+        <!-- Main -->
+        <activity android:name="xt.R" />
+
+        <!-- Superuser -->
+        <activity
+            android:name="lt5.a"
+            android:directBootAware="true"
+            android:excludeFromRecents="true"
             android:exported="false"
-            android:grantUriPermissions="true">
-        </provider>
+            tools:ignore="AppLinkUrlError">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+
+        <!-- Receiver -->
+        <receiver
+            android:name="a.r"
+            android:directBootAware="true"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.REBOOT" />
+                <action android:name="android.intent.action.LOCALE_CHANGED" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.PACKAGE_FULLY_REMOVED" />
+
+                <data android:scheme="package" />
+            </intent-filter>
+        </receiver>
+
+        <!-- DownloadService -->
+        <service android:name="d.s" />
+
+        <!-- FileProvider -->
+        <provider
+            android:name="a.ii"
+            android:authorities="${applicationId}.provider"
+            android:directBootAware="true"
+            android:exported="false"
+            android:grantUriPermissions="true" />
+
+        <!-- WorkManager -->
+        <service
+            android:name="w.d"
+            android:directBootAware="false"
+            android:enabled="true"
+            android:exported="true"
+            android:permission="android.permission.BIND_JOB_SERVICE" />
+
+        <!-- Hardcode GMS version -->
+        <meta-data
+            android:name="com.google.android.gms.version"
+            android:value="12451000" />
 
     </application>
 

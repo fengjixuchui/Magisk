@@ -14,11 +14,11 @@ buildscript {
         maven { url = uri("https://kotlin.bintray.com/kotlinx") }
     }
 
-    val vNav = "2.3.1"
+    val vNav = "2.3.2"
     extra["vNav"] = vNav
 
     dependencies {
-        classpath("com.android.tools.build:gradle:4.1.1")
+        classpath("com.android.tools.build:gradle:4.1.2")
         classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:1.4.21")
         classpath("androidx.navigation:navigation-safe-args-gradle-plugin:${vNav}")
 
@@ -69,7 +69,7 @@ subprojects {
                 defaultConfig {
                     if (minSdkVersion == null)
                         minSdkVersion(17)
-                    targetSdkVersion(28)
+                    targetSdkVersion(30)
                 }
 
                 compileOptions {

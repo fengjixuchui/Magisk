@@ -1,5 +1,8 @@
-## v8.0.3
+## v8.0.7
 
-- Switch to the new Magisk Module Repo setup in preparation to allow 3rd party repos
-- Add tapjacking protection on Superuser request dialog
-- Stability changes and bug fixes
+- Fix sepolicy rule migration when upgrading
+
+## v8.0.6
+
+- Minor UI changes
+- Update internal scripts

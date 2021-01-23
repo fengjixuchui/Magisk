@@ -2,26 +2,45 @@
 import sys
 import os
 import subprocess
-
-is_windows = os.name == 'nt'
-if is_windows:
-    import colorama
-    colorama.init()
+import argparse
+import multiprocessing
+import zipfile
+import datetime
+import errno
+import shutil
+import lzma
+import platform
+import urllib.request
+import os.path as op
+from distutils.dir_util import copy_tree
 
 
 def error(str):
-    print('\n' + '\033[41m' + str + '\033[0m' + '\n')
+    if is_ci:
+        print(f'\n ! {str}\n')
+    else:
+        print(f'\n\033[41m{str}\033[0m\n')
     sys.exit(1)
 
 
 def header(str):
-    print('\n' + '\033[44m' + str + '\033[0m' + '\n')
+    if is_ci:
+        print(f'\n{str}\n')
+    else:
+        print(f'\n\033[44m{str}\033[0m\n')
 
 
 def vprint(str):
     if args.verbose:
         print(str)
 
+
+is_windows = os.name == 'nt'
+is_ci = 'CI' in os.environ and os.environ['CI'] == 'true'
+
+if not is_ci and is_windows:
+    import colorama
+    colorama.init()
 
 # Environment checks
 if not sys.version_info >= (3, 6):
@@ -36,27 +55,11 @@ try:
 except FileNotFoundError:
     error('Please install JDK and make sure \'javac\' is available in PATH')
 
-import argparse
-import multiprocessing
-import zipfile
-import datetime
-import errno
-import shutil
-import lzma
-import tempfile
-import platform
-import urllib.request
-import os.path as op
-from distutils.dir_util import copy_tree
-
 cpu_count = multiprocessing.cpu_count()
 archs = ['armeabi-v7a', 'x86']
 arch64 = ['arm64-v8a', 'x86_64']
 support_targets = ['magisk', 'magiskinit', 'magiskboot', 'magiskpolicy', 'resetprop', 'busybox', 'test']
 default_targets = ['magisk', 'magiskinit', 'magiskboot', 'busybox']
-
-ndk_ver = '21d'
-ndk_ver_full = '21.3.6528147'
 
 ndk_root = op.join(os.environ['ANDROID_SDK_ROOT'], 'ndk')
 ndk_path = op.join(ndk_root, 'magisk')
@@ -66,6 +69,8 @@ gradlew = op.join('.', 'gradlew' + ('.bat' if is_windows else ''))
 # Global vars
 config = {}
 STDOUT = None
+build_tools = None
+
 
 def mv(source, target):
     try:
@@ -116,6 +121,10 @@ def system(cmd):
     return subprocess.run(cmd, shell=True, stdout=STDOUT)
 
 
+def cmd_out(cmd):
+    return subprocess.check_output(cmd).strip().decode('utf-8')
+
+
 def xz(data):
     return lzma.compress(data, preset=9, check=lzma.CHECK_NONE)
 
@@ -129,36 +138,35 @@ def parse_props(file):
             prop = line.split('=')
             if len(prop) != 2:
                 continue
-            props[prop[0].strip(' \t\r\n')] = prop[1].strip(' \t\r\n')
+            value = prop[1].strip(' \t\r\n')
+            if len(value) == 0:
+                continue
+            props[prop[0].strip(' \t\r\n')] = value
     return props
 
 
 def load_config(args):
-    # Load prop file
-    if not op.exists(args.config):
-        error(f'Please make sure {args.config} exists')
+    commit_hash = cmd_out(['git', 'rev-parse', '--short=8', 'HEAD'])
 
-    # Some default values
+    # Default values
+    config['version'] = commit_hash
     config['outdir'] = 'out'
     config['prettyName'] = 'false'
-    config['keyStore'] = 'release-key.jks'
 
-    config.update(parse_props(args.config))
+    # Load prop files
+    if op.exists(args.config):
+        config.update(parse_props(args.config))
 
-    # Sanitize configs
+    for key, value in parse_props('gradle.properties').items():
+        if key.startswith('magisk.'):
+            config[key[7:]] = value
 
     config['prettyName'] = config['prettyName'].lower() == 'true'
-
-    if 'version' not in config or 'versionCode' not in config:
-        error('Config error: "version" and "versionCode" is required')
 
     try:
         config['versionCode'] = int(config['versionCode'])
     except ValueError:
         error('Config error: "versionCode" is required to be an integer')
-
-    if args.release and not op.exists(config['keyStore']):
-        error(f'Config error: assign "keyStore" to a java keystore')
 
     mkdir_p(config['outdir'])
     global STDOUT
@@ -188,33 +196,52 @@ def clean_elf():
         elf_cleaner = op.join('native', 'out', 'elf-cleaner')
         if not op.exists(elf_cleaner):
             execv(['g++', '-std=c++11', 'tools/termux-elf-cleaner/termux-elf-cleaner.cpp',
-                  '-o', elf_cleaner])
+                   '-o', elf_cleaner])
     args = [elf_cleaner]
-    args.extend(op.join('native', 'out', arch, 'magisk') for arch in archs + arch64)
+    args.extend(op.join('native', 'out', arch, 'magisk')
+                for arch in archs + arch64)
     execv(args)
 
 
-def sign_zip(unsigned, output, release):
-    if not release:
-        mv(unsigned, output)
+def find_build_tools():
+    global build_tools
+    if build_tools:
+        return build_tools
+    build_tools_root = op.join(os.environ['ANDROID_SDK_ROOT'], 'build-tools')
+    ls = os.listdir(build_tools_root)
+    # Use the latest build tools available
+    ls.sort()
+    build_tools = op.join(build_tools_root, ls[-1])
+    return build_tools
+
+
+def sign_zip(unsigned):
+    if 'keyStore' not in config:
         return
 
-    signer_name = 'zipsigner-4.0.jar'
-    zipsigner = op.join('app', 'signing', 'build', 'libs', signer_name)
+    msg = '* Signing APK'
+    apksigner = op.join(find_build_tools(), 'apksigner')
 
-    if not op.exists(zipsigner):
-        header('* Building ' + signer_name)
-        proc = execv([gradlew, 'app:signing:shadowJar'])
-        if proc.returncode != 0:
-            error(f'Build {signer_name} failed!')
+    exec_args = [apksigner, 'sign',
+                '--ks', config['keyStore'],
+                '--ks-pass', f'pass:{config["keyStorePass"]}',
+                '--ks-key-alias', config['keyAlias'],
+                '--key-pass', f'pass:{config["keyPass"]}',
+                '--v1-signer-name', 'CERT',
+                '--v4-signing-enabled', 'false']
 
-    header('* Signing Zip')
+    if unsigned.endswith('.zip'):
+        msg = '* Signing zip'
+        exec_args.extend(['--min-sdk-version', '17',
+                         '--v2-signing-enabled', 'false',
+                         '--v3-signing-enabled', 'false'])
 
-    proc = execv(['java', '-jar', zipsigner, config['keyStore'], config['keyStorePass'],
-                  config['keyAlias'], config['keyPass'], unsigned, output])
+    exec_args.append(unsigned)
 
+    header(msg)
+    proc = execv(exec_args)
     if proc.returncode != 0:
-        error('Signing zip failed!')
+        error('Signing failed!')
 
 
 def binary_dump(src, out, var_name):
@@ -227,29 +254,6 @@ def binary_dump(src, out, var_name):
     out.flush()
 
 
-def gen_update_binary():
-    bs = 1024
-    update_bin = bytearray(bs)
-    file = op.join('native', 'out', 'x86', 'busybox')
-    with open(file, 'rb') as f:
-        x86_bb = f.read()
-    file = op.join('native', 'out', 'armeabi-v7a', 'busybox')
-    with open(file, 'rb') as f:
-        arm_bb = f.read()
-    file = op.join('scripts', 'update_binary.sh')
-    with open(file, 'rb') as f:
-        script = f.read()
-    # Align x86 busybox to bs
-    blk_cnt = (len(x86_bb) - 1) // bs + 1
-    script = script.replace(b'__X86_CNT__', b'%d' % blk_cnt)
-    update_bin[:len(script)] = script
-    update_bin.extend(x86_bb)
-    # Padding for alignment
-    update_bin.extend(b'\0' * (blk_cnt * bs - len(x86_bb)))
-    update_bin.extend(arm_bb)
-    return update_bin
-
-
 def run_ndk_build(flags):
     os.chdir('native')
     proc = system(f'{ndk_build} {base_flags} {flags} -j{cpu_count}')
@@ -260,18 +264,6 @@ def run_ndk_build(flags):
 
 
 def dump_bin_headers():
-    for arch in archs:
-        bin_file = op.join('native', 'out', arch, 'magisk')
-        if not op.exists(bin_file):
-            error('Build "magisk" before building "magiskinit"')
-        with open(op.join('native', 'out', arch, 'binaries_arch.h'), 'w') as out:
-            with open(bin_file, 'rb') as src:
-                binary_dump(src, out, 'magisk_xz')
-    for arch, arch32 in list(zip(arch64, archs)):
-        bin_file = op.join('native', 'out', arch, 'magisk')
-        with open(op.join('native', 'out', arch32, 'binaries_arch64.h'), 'w') as out:
-            with open(bin_file, 'rb') as src:
-                binary_dump(src, out, 'magisk_xz')
     stub = op.join(config['outdir'], 'stub-release.apk')
     if not op.exists(stub):
         error('Build stub APK before building "magiskinit"')
@@ -283,7 +275,7 @@ def dump_bin_headers():
 def build_binary(args):
     # Verify NDK install
     props = parse_props(op.join(ndk_path, 'source.properties'))
-    if props['Pkg.Revision'] != ndk_ver_full:
+    if props['Pkg.Revision'] != config['fullNdkVersion']:
         error('Incorrect NDK. Please install/upgrade NDK with "build.py ndk"')
 
     if args.target:
@@ -295,10 +287,20 @@ def build_binary(args):
 
     header('* Building binaries: ' + ' '.join(args.target))
 
-    config_stat = os.stat(args.config)
+    update_flags = False
     flags = op.join('native', 'jni', 'include', 'flags.hpp')
-    if config_stat.st_mtime_ns > os.stat(flags).st_mtime_ns:
-        os.utime(flags, ns=(config_stat.st_atime_ns, config_stat.st_mtime_ns))
+    flags_stat = os.stat(flags)
+
+    if op.exists(args.config):
+        if os.stat(args.config).st_mtime_ns > flags_stat.st_mtime_ns:
+            update_flags = True
+
+    last_commit = int(cmd_out(['git', 'log', '-1', r'--format=%at', 'HEAD']))
+    if last_commit > flags_stat.st_mtime:
+        update_flags = True
+
+    if update_flags:
+        os.utime(flags)
 
     # Basic flags
     global base_flags
@@ -310,32 +312,37 @@ def build_binary(args):
         run_ndk_build('B_MAGISK=1 B_64BIT=1')
         clean_elf()
 
-    if 'magiskinit' in args.target:
-        dump_bin_headers()
-        run_ndk_build('B_INIT=1')
-        run_ndk_build('B_INIT64=1')
-
-    if 'magiskpolicy' in args.target:
-        run_ndk_build('B_POLICY=1')
-
-    if 'resetprop' in args.target:
-        run_ndk_build('B_PROP=1')
-
-    if 'magiskboot' in args.target:
-        run_ndk_build('B_BOOT=1')
-
-    if 'busybox' in args.target:
-        run_ndk_build('B_BB=1')
-
     if 'test' in args.target:
         run_ndk_build('B_TEST=1 B_64BIT=1')
+
+    # 32-bit only targets can be built in one command
+    flag = ''
+
+    if 'magiskinit' in args.target:
+        dump_bin_headers()
+        flag += ' B_INIT=1'
+
+    if 'magiskpolicy' in args.target:
+        flag += ' B_POLICY=1'
+
+    if 'resetprop' in args.target:
+        flag += ' B_PROP=1'
+
+    if 'magiskboot' in args.target:
+        flag += ' B_BOOT=1'
+
+    if 'busybox' in args.target:
+        flag += ' B_BB=1'
+
+    if flag:
+        run_ndk_build(flag)
 
 
 def build_apk(args, module):
     build_type = 'Release' if args.release or module == 'stub' else 'Debug'
 
     proc = execv([gradlew, f'{module}:assemble{build_type}',
-                 '-PconfigPath=' + op.abspath(args.config)])
+                  '-PconfigPath=' + op.abspath(args.config)])
     if proc.returncode != 0:
         error(f'Build {module} failed!')
 
@@ -377,84 +384,20 @@ def build_snet(args):
     header('Output: ' + target)
 
 
-def zip_main(args):
-    header('* Packing Flashable Zip')
-
-    with tempfile.NamedTemporaryFile(delete=False) as f:
-        unsigned = f.name
-
-    with zipfile.ZipFile(unsigned, 'w', compression=zipfile.ZIP_DEFLATED, allowZip64=False) as zipf:
-        # update-binary
-        target = op.join('META-INF', 'com', 'google',
-                         'android', 'update-binary')
-        vprint('zip: ' + target)
-        zipf.writestr(target, gen_update_binary())
-
-        # updater-script
-        source = op.join('scripts', 'flash_script.sh')
-        target = op.join('META-INF', 'com', 'google',
-                         'android', 'updater-script')
-        zip_with_msg(zipf, source, target)
-
-        # Binaries
-        for lib_dir, zip_dir in [('armeabi-v7a', 'arm'), ('x86', 'x86')]:
-            for binary in ['magiskinit', 'magiskinit64', 'magiskboot']:
-                source = op.join('native', 'out', lib_dir, binary)
-                target = op.join(zip_dir, binary)
-                zip_with_msg(zipf, source, target)
-
-        # APK
-        source = op.join(
-            config['outdir'], 'app-release.apk' if args.release else 'app-debug.apk')
-        target = op.join('common', 'magisk.apk')
-        zip_with_msg(zipf, source, target)
-
-        # boot_patch.sh
-        source = op.join('scripts', 'boot_patch.sh')
-        target = op.join('common', 'boot_patch.sh')
-        zip_with_msg(zipf, source, target)
-        # util_functions.sh
-        source = op.join('scripts', 'util_functions.sh')
-        with open(source, 'r') as script:
-            # Add version info util_functions.sh
-            util_func = script.read().replace(
-                '#MAGISK_VERSION_STUB',
-                f'MAGISK_VER="{config["version"]}"\nMAGISK_VER_CODE={config["versionCode"]}')
-            target = op.join('common', 'util_functions.sh')
-            vprint(f'zip: {source} -> {target}')
-            zipf.writestr(target, util_func)
-        # addon.d.sh
-        source = op.join('scripts', 'addon.d.sh')
-        target = op.join('common', 'addon.d.sh')
-        zip_with_msg(zipf, source, target)
-
-        # chromeos
-        for tool in ['futility', 'kernel_data_key.vbprivk', 'kernel.keyblock']:
-            source = op.join('tools', tool)
-            target = op.join('chromeos', tool)
-            zip_with_msg(zipf, source, target)
-
-        # End of zipping
-
-    output = op.join(config['outdir'], f'Magisk-v{config["version"]}.zip' if config['prettyName'] else
-                     'magisk-release.zip' if args.release else 'magisk-debug.zip')
-    sign_zip(unsigned, output, args.release)
-    rm(unsigned)
-    header('Output: ' + output)
-
-
 def zip_uninstaller(args):
     header('* Packing Uninstaller Zip')
 
-    with tempfile.NamedTemporaryFile(delete=False) as f:
-        unsigned = f.name
+    datestr = f'{datetime.datetime.now():%Y%m%d}'
+    name = f'Magisk-uninstaller-{datestr}.zip' if config['prettyName'] else 'magisk-uninstaller.zip'
+    output = op.join(config['outdir'], name)
 
-    with zipfile.ZipFile(unsigned, 'w', compression=zipfile.ZIP_DEFLATED, allowZip64=False) as zipf:
+    with zipfile.ZipFile(output, 'w', compression=zipfile.ZIP_DEFLATED, allowZip64=False) as zipf:
         # update-binary
+        source = op.join('scripts', 'update_binary.sh')
         target = op.join('META-INF', 'com', 'google',
                          'android', 'update-binary')
-        vprint('zip: ' + target)
-        zipf.writestr(target, gen_update_binary())
+        zip_with_msg(zipf, source, target)
+
         # updater-script
         source = op.join('scripts', 'magisk_uninstaller.sh')
         target = op.join('META-INF', 'com', 'google',
@@ -462,31 +405,36 @@ def zip_uninstaller(args):
         zip_with_msg(zipf, source, target)
 
         # Binaries
-        for lib_dir, zip_dir in [('armeabi-v7a', 'arm'), ('x86', 'x86')]:
-            source = op.join('native', 'out', lib_dir, 'magiskboot')
-            target = op.join(zip_dir, 'magiskboot')
-            zip_with_msg(zipf, source, target)
+        for exe in ('busybox', 'magiskboot'):
+            for arch in archs:
+                source = op.join('native', 'out', arch, exe)
+                target = op.join('lib', arch, f'lib{exe}.so')
+                zip_with_msg(zipf, source, target)
 
         # util_functions.sh
         source = op.join('scripts', 'util_functions.sh')
         with open(source, 'r') as script:
-            target = op.join('util_functions.sh')
+            # Add version info util_functions.sh
+            util_func = script.read().replace(
+                '#MAGISK_VERSION_STUB',
+                f'MAGISK_VER="{config["version"]}"\n'
+                f'MAGISK_VER_CODE={config["versionCode"]}')
+            target = op.join('assets', 'util_functions.sh')
             vprint(f'zip: {source} -> {target}')
-            zipf.writestr(target, script.read())
+            zipf.writestr(target, util_func)
 
         # chromeos
         for tool in ['futility', 'kernel_data_key.vbprivk', 'kernel.keyblock']:
-            source = op.join('tools', tool)
-            target = op.join('chromeos', tool)
+            if tool == 'futility':
+                source = op.join('tools', tool)
+            else:
+                source = op.join('tools', 'keys', tool)
+            target = op.join('assets', 'chromeos', tool)
             zip_with_msg(zipf, source, target)
 
         # End of zipping
 
-    datestr = datetime.datetime.now().strftime("%Y%m%d")
-    output = op.join(config['outdir'], f'Magisk-uninstaller-{datestr}.zip'
-                     if config['prettyName'] else 'magisk-uninstaller.zip')
-    sign_zip(unsigned, output, args.release)
-    rm(unsigned)
+    sign_zip(output)
     header('Output: ' + output)
 
 
@@ -511,6 +459,7 @@ def cleanup(args):
 
 def setup_ndk(args):
     os_name = platform.system().lower()
+    ndk_ver = config['ndkVersion']
     url = f'https://dl.google.com/android/repository/android-ndk-r{ndk_ver}-{os_name}-x86_64.zip'
     ndk_zip = url.split('/')[-1]
 
@@ -524,7 +473,7 @@ def setup_ndk(args):
         for info in zf.infolist():
             extracted_path = zf.extract(info, ndk_root)
             vprint(f'Extracting {info.filename}')
-            if info.create_system == 3: # ZIP_UNIX_SYSTEM = 3
+            if info.create_system == 3:  # ZIP_UNIX_SYSTEM = 3
                 unix_attributes = info.external_attr >> 16
             if unix_attributes:
                 os.chmod(extracted_path, unix_attributes)
@@ -541,37 +490,37 @@ def setup_ndk(args):
 
     header('* Replacing API-16 static libs')
     for target in ['arm-linux-androideabi', 'i686-linux-android']:
-      arch = target.split('-')[0]
-      lib_dir = op.join(
-        ndk_path, 'toolchains', 'llvm', 'prebuilt', f'{os_name}-x86_64',
-        'sysroot', 'usr', 'lib', f'{target}', '16')
-      src_dir = op.join('tools', 'ndk-bins', arch)
-      # Remove stupid macOS crap
-      rm(op.join(src_dir, '.DS_Store'))
-      for path in copy_tree(src_dir, lib_dir):
-          vprint(f'Replaced {path}')
+        arch = target.split('-')[0]
+        lib_dir = op.join(
+            ndk_path, 'toolchains', 'llvm', 'prebuilt', f'{os_name}-x86_64',
+            'sysroot', 'usr', 'lib', f'{target}', '16')
+        src_dir = op.join('tools', 'ndk-bins', arch)
+        # Remove stupid macOS crap
+        rm(op.join(src_dir, '.DS_Store'))
+        for path in copy_tree(src_dir, lib_dir):
+            vprint(f'Replaced {path}')
 
 
 def build_all(args):
     vars(args)['target'] = []
     build_stub(args)
-    build_app(args)
     build_binary(args)
-    zip_main(args)
+    build_app(args)
     zip_uninstaller(args)
 
 
 parser = argparse.ArgumentParser(description='Magisk build script')
+parser.set_defaults(func=lambda x: None)
 parser.add_argument('-r', '--release', action='store_true',
                     help='compile in release mode')
 parser.add_argument('-v', '--verbose', action='store_true',
                     help='verbose output')
 parser.add_argument('-c', '--config', default='config.prop',
-                    help='override config file (default: config.prop)')
+                    help='custom config file (default: config.prop)')
 subparsers = parser.add_subparsers(title='actions')
 
 all_parser = subparsers.add_parser(
-    'all', help='build binaries, apks, zips')
+    'all', help='build everything')
 all_parser.set_defaults(func=build_all)
 
 binary_parser = subparsers.add_parser('binary', help='build binaries')
@@ -592,10 +541,6 @@ stub_parser.set_defaults(func=build_stub)
 snet_parser = subparsers.add_parser(
     'snet', help='build snet extension')
 snet_parser.set_defaults(func=build_snet)
-
-zip_parser = subparsers.add_parser(
-    'zip', help='zip Magisk into a flashable zip')
-zip_parser.set_defaults(func=zip_main)
 
 un_parser = subparsers.add_parser(
     'uninstaller', help='create flashable uninstaller')
